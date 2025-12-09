@@ -1,0 +1,26 @@
+{
+  "name": "srt-web-server",
+  "version": "1.0.0",
+  "description": "Web-based SRT streaming server with UDP multicast output",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "node server/index.js",
+    "client": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.22.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^8.2.2",
+    "vite": "^5.4.21"
+  }
+}
