@@ -15,10 +15,13 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true
+      },
+      '/ws': {
+        target: 'ws://localhost:3001',
+        ws: true
       }
     },
-    allowedHosts: true,
-    ws: true
+    allowedHosts: true
   },
   resolve: {
     alias: {
