@@ -23,9 +23,7 @@ function App() {
 
   const connectWebSocket = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname;
-    const wsPort = import.meta.env.DEV ? '3001' : window.location.port;
-    const wsUrl = `${protocol}//${host}:${wsPort}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
