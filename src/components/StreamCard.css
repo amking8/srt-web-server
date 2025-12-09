@@ -1,0 +1,174 @@
+.stream-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  transition: border-color 0.2s;
+}
+
+.stream-card.running {
+  border-color: var(--success);
+}
+
+.stream-card.waiting {
+  border-color: var(--warning);
+}
+
+.stream-card.error {
+  border-color: var(--error);
+}
+
+.stream-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.stream-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+}
+
+.status-indicator.running {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.waiting {
+  background: var(--warning);
+  box-shadow: 0 0 8px var(--warning);
+  animation: pulse 1.5s infinite;
+}
+
+.status-indicator.starting {
+  background: var(--accent);
+  animation: pulse 1s infinite;
+}
+
+.status-indicator.stopped {
+  background: var(--text-secondary);
+}
+
+.status-indicator.error {
+  background: var(--error);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.stream-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.stream-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: all 0.2s;
+}
+
+.btn-icon:hover {
+  background: var(--bg-secondary);
+}
+
+.btn-icon.start {
+  color: var(--success);
+}
+
+.btn-icon.start:hover {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.btn-icon.stop {
+  color: var(--error);
+}
+
+.btn-icon.stop:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.btn-icon.edit:hover {
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.btn-icon.delete:hover {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.stream-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  font-size: 13px;
+}
+
+.detail-row {
+  display: flex;
+  gap: 6px;
+}
+
+.detail-label {
+  color: var(--text-secondary);
+}
+
+.detail-value {
+  color: var(--text-primary);
+}
+
+.detail-value.mono {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+}
+
+.stream-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.stream-stats .stat {
+  text-align: center;
+}
+
+.stream-stats .stat-label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.stream-stats .stat-value {
+  font-size: 14px;
+  font-weight: 600;
+}
