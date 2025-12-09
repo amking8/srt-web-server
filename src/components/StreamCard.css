@@ -18,6 +18,10 @@
   border-color: var(--error);
 }
 
+.stream-card.recording {
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.3);
+}
+
 .stream-header {
   display: flex;
   justify-content: space-between;
@@ -73,6 +77,21 @@
   font-size: 15px;
 }
 
+.recording-badge {
+  background: var(--error);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  animation: recording-pulse 1s infinite;
+}
+
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .stream-actions {
   display: flex;
   gap: 4px;
@@ -89,10 +108,16 @@
   background: transparent;
   color: var(--text-secondary);
   transition: all 0.2s;
+  cursor: pointer;
 }
 
 .btn-icon:hover {
   background: var(--bg-secondary);
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .btn-icon.start {
@@ -111,6 +136,39 @@
   background: rgba(239, 68, 68, 0.15);
 }
 
+.btn-icon.disconnect {
+  color: var(--warning);
+}
+
+.btn-icon.disconnect:hover {
+  background: rgba(234, 179, 8, 0.15);
+}
+
+.btn-icon.reset {
+  color: var(--accent);
+}
+
+.btn-icon.reset:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.btn-icon.record {
+  color: var(--error);
+}
+
+.btn-icon.record:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.btn-icon.record-stop {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.btn-icon.record-stop:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
 .btn-icon.edit:hover {
   color: var(--accent);
   background: rgba(59, 130, 246, 0.15);
@@ -119,6 +177,41 @@
 .btn-icon.delete:hover {
   color: var(--error);
   background: rgba(239, 68, 68, 0.15);
+}
+
+.record-dropdown {
+  position: relative;
+}
+
+.record-options {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.record-options button {
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.record-options button:hover {
+  background: var(--bg-tertiary);
 }
 
 .stream-details {
@@ -147,12 +240,36 @@
 }
 
 .stream-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.stats-row.primary .stat-value {
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.stats-row.secondary .stat-value {
+  font-size: 13px;
+}
+
+.stats-row.tertiary {
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.stats-row.tertiary .stat-value {
+  font-size: 12px;
 }
 
 .stream-stats .stat {
@@ -161,7 +278,7 @@
 
 .stream-stats .stat-label {
   display: block;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -169,6 +286,17 @@
 }
 
 .stream-stats .stat-value {
-  font-size: 14px;
   font-weight: 600;
+}
+
+.stream-stats .stat.loss .stat-value {
+  color: var(--warning);
+}
+
+.stream-stats .stat.drops .stat-value {
+  color: var(--error);
+}
+
+.stream-stats .stat.rtt .stat-value {
+  color: var(--text-secondary);
 }

@@ -22,8 +22,8 @@ function LogViewer({ logs }) {
 
   return (
     <div className="log-viewer">
-      {logs.map(log => (
-        <div key={log.id} className={`log-entry ${log.level}`}>
+      {logs.map((log, index) => (
+        <div key={`${log.id}-${index}`} className={`log-entry ${log.level}`}>
           <span className="log-time">{formatTime(log.timestamp)}</span>
           <span className={`log-level ${log.level}`}>{log.level.toUpperCase()}</span>
           <span className="log-message">{log.message}</span>

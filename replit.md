@@ -10,6 +10,10 @@ A web-based SRT (Secure Reliable Transport) streaming server that receives incom
 - **Real-time Monitoring**: WebSocket-based dashboard with live statistics
 - **Passthrough Mode**: Forward streams as-is without decoding for minimal CPU usage
 - **Connection Logging**: Real-time event and error logging
+- **Enhanced Statistics**: Uptime, FPS, bitrate, packets lost/dropped, encoder IP display
+- **Stream Recording**: Record incoming streams to TS or MP4 format
+- **Disconnect/Reset Controls**: Manual disconnect and buffer reset buttons
+- **Save/Load Configuration**: Export and import stream configurations
 
 ## Project Architecture
 
@@ -73,3 +77,8 @@ npm run dev
 - Implemented FFmpeg-based SRT handling for real SRT protocol support
 - Added UDP multicast passthrough functionality
 - Created responsive web dashboard with real-time updates
+- December 2024 (Phase 1): Enhanced statistics, recording, disconnect/reset, save/load config
+  - Added uptime, FPS, packets lost/dropped, RTT, encoder IP to stream stats
+  - Implemented stream recording with TS/MP4 format selection
+  - Added disconnect and reset buffer control buttons
+  - Added save/load configuration functionality with JSON export/import

@@ -144,13 +144,88 @@ function App() {
     }
   };
 
+  const handleDisconnectStream = async (id) => {
+    try {
+      await fetch(`/api/streams/${id}/disconnect`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to disconnect stream:', error);
+    }
+  };
+
+  const handleResetBuffer = async (id) => {
+    try {
+      await fetch(`/api/streams/${id}/reset-buffer`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to reset buffer:', error);
+    }
+  };
+
+  const handleStartRecording = async (id, format) => {
+    try {
+      await fetch(`/api/streams/${id}/record/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format })
+      });
+    } catch (error) {
+      console.error('Failed to start recording:', error);
+    }
+  };
+
+  const handleStopRecording = async (id) => {
+    try {
+      await fetch(`/api/streams/${id}/record/stop`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to stop recording:', error);
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    const filename = prompt('Enter config filename:', 'srt-config.json');
+    if (!filename) return;
+    try {
+      const response = await fetch('/api/config/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename })
+      });
+      if (response.ok) {
+        alert('Configuration saved successfully!');
+      }
+    } catch (error) {
+      console.error('Failed to save config:', error);
+    }
+  };
+
+  const handleLoadConfig = async () => {
+    const filename = prompt('Enter config filename to load:', 'srt-config.json');
+    if (!filename) return;
+    try {
+      const response = await fetch('/api/config/load', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename })
+      });
+      if (response.ok) {
+        alert('Configuration loaded successfully!');
+      } else {
+        const data = await response.json();
+        alert(`Failed to load: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to load config:', error);
+    }
+  };
+
   return (
     <div className="app">
       <Header 
         onAddStream={() => {
           setEditingStream(null);
           setShowForm(true);
-        }} 
+        }}
+        onSaveConfig={handleSaveConfig}
+        onLoadConfig={handleLoadConfig}
       />
       
       <main className="main-content">
@@ -168,6 +243,10 @@ function App() {
               onStop={handleStopStream}
               onEdit={handleEditStream}
               onDelete={handleDeleteStream}
+              onDisconnect={handleDisconnectStream}
+              onResetBuffer={handleResetBuffer}
+              onRecord={handleStartRecording}
+              onStopRecord={handleStopRecording}
             />
           </div>
           
