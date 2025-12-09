@@ -136,6 +136,79 @@ app.post('/api/streams/:id/stop', (req, res) => {
   }
 });
 
+// Disconnect a stream (stop and reset counters)
+app.post('/api/streams/:id/disconnect', (req, res) => {
+  try {
+    srtManager.disconnectStream(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Reset buffer (restart stream to clear buffer)
+app.post('/api/streams/:id/reset-buffer', (req, res) => {
+  try {
+    srtManager.resetBuffer(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Start recording
+app.post('/api/streams/:id/record/start', (req, res) => {
+  try {
+    const format = req.body.format || 'ts';
+    const result = srtManager.startRecording(req.params.id, format);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Stop recording
+app.post('/api/streams/:id/record/stop', (req, res) => {
+  try {
+    srtManager.stopRecording(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Save configuration
+app.post('/api/config/save', (req, res) => {
+  try {
+    const filename = req.body.filename || 'srt-config.json';
+    const config = srtManager.saveConfig(filename);
+    res.json({ success: true, config });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Load configuration
+app.post('/api/config/load', (req, res) => {
+  try {
+    const filename = req.body.filename || 'srt-config.json';
+    const config = srtManager.loadConfig(filename);
+    res.json({ success: true, config });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// List saved configurations
+app.get('/api/config/list', (req, res) => {
+  res.json(srtManager.getConfigList());
+});
+
+// List recordings
+app.get('/api/recordings', (req, res) => {
+  res.json(srtManager.getRecordingsList());
+});
+
 // Get logs
 app.get('/api/logs', (req, res) => {
   res.json(srtManager.getLogs());

@@ -2,7 +2,7 @@ import React from 'react';
 import StreamCard from './StreamCard';
 import './StreamList.css';
 
-function StreamList({ streams, onStart, onStop, onEdit, onDelete }) {
+function StreamList({ streams, onStart, onStop, onEdit, onDelete, onDisconnect, onResetBuffer, onRecord, onStopRecord }) {
   if (streams.length === 0) {
     return (
       <div className="empty-state">
@@ -29,6 +29,10 @@ function StreamList({ streams, onStart, onStop, onEdit, onDelete }) {
           onStop={() => onStop(stream.id)}
           onEdit={() => onEdit(stream)}
           onDelete={() => onDelete(stream.id)}
+          onDisconnect={() => onDisconnect(stream.id)}
+          onResetBuffer={() => onResetBuffer(stream.id)}
+          onRecord={(format) => onRecord(stream.id, format)}
+          onStopRecord={() => onStopRecord(stream.id)}
         />
       ))}
     </div>
