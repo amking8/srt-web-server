@@ -847,10 +847,11 @@ export class SRTManager extends EventEmitter {
       ? ['-c', 'copy', '-movflags', '+faststart', '-f', 'mp4', filepath]
       : ['-c', 'copy', '-f', 'mpegts', filepath];
 
+    // Use localhost UDP instead of multicast (multicast doesn't work on cloud/AWS)
     const ffmpegArgs = [
       '-hide_banner',
       '-loglevel', 'warning',
-      '-i', `udp://${channel.multicastAddress}:${channel.multicastPort}`,
+      '-i', `udp://127.0.0.1:${channel.multicastPort}`,
       ...formatArgs
     ];
 
