@@ -85,7 +85,9 @@ class MultiviewerService extends EventEmitter {
     const ffmpegArgs = [
       '-hide_banner',
       '-loglevel', 'warning',
-      '-fflags', 'nobuffer',
+      '-analyzeduration', '10000000',
+      '-probesize', '10000000',
+      '-fflags', '+genpts+discardcorrupt',
       '-flags', 'low_delay',
       '-i', udpInput,
       '-c:v', 'libx264',
