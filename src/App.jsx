@@ -4,6 +4,7 @@ import ChannelGrid from './components/ChannelGrid';
 import ChannelForm from './components/ChannelForm';
 import LogViewer from './components/LogViewer';
 import StatsPanel from './components/StatsPanel';
+import MultiviewerModal from './components/MultiviewerModal';
 import './App.css';
 
 function App() {
@@ -31,6 +32,8 @@ function App() {
   const [editingChannel, setEditingChannel] = useState(null);
   const [serverRunning, setServerRunning] = useState(false);
   const [ws, setWs] = useState(null);
+  const [showMultiviewer, setShowMultiviewer] = useState(false);
+  const [audioLevels, setAudioLevels] = useState({});
 
   const connectWebSocket = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -74,6 +77,16 @@ function App() {
           break;
         case 'timecodeConfig':
           setTimecodeConfig(message.data);
+          break;
+        case 'audioLevels':
+          if (message.data) {
+            setAudioLevels(prev => ({
+              ...prev,
+              [message.data.channelId]: message.data.levels
+            }));
+          }
+          break;
+        case 'multiviewerStatus':
           break;
       }
     };
@@ -265,6 +278,25 @@ function App() {
     }
   };
 
+  const handleOpenMultiviewer = async () => {
+    try {
+      await fetch('/api/multiviewer/start', { method: 'POST' });
+      setShowMultiviewer(true);
+    } catch (error) {
+      console.error('Failed to start multiviewer:', error);
+    }
+  };
+
+  const handleCloseMultiviewer = async () => {
+    try {
+      await fetch('/api/multiviewer/stop', { method: 'POST' });
+      setShowMultiviewer(false);
+      setAudioLevels({});
+    } catch (error) {
+      console.error('Failed to stop multiviewer:', error);
+    }
+  };
+
   return (
     <div className="app">
       <Header 
@@ -278,6 +310,7 @@ function App() {
         timecodeConfig={timecodeConfig}
         onToggleTimecodeSync={handleToggleTimecodeSync}
         onUpdateTimecodeConfig={handleUpdateTimecodeConfig}
+        onOpenMultiviewer={handleOpenMultiviewer}
       />
       
       <main className="main-content">
@@ -323,6 +356,13 @@ function App() {
           }}
         />
       )}
+
+      <MultiviewerModal
+        isOpen={showMultiviewer}
+        onClose={handleCloseMultiviewer}
+        channels={channels}
+        audioLevels={audioLevels}
+      />
     </div>
   );
 }

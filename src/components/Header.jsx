@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './Header.css';
 
-function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUpdateConfig, onSaveConfig, onLoadConfig, timecodeConfig, onToggleTimecodeSync, onUpdateTimecodeConfig }) {
+function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUpdateConfig, onSaveConfig, onLoadConfig, timecodeConfig, onToggleTimecodeSync, onUpdateTimecodeConfig, onOpenMultiviewer }) {
   const [showSettings, setShowSettings] = useState(false);
   const [portValue, setPortValue] = useState(serverConfig?.srtPort || 9000);
   const [latencyValue, setLatencyValue] = useState(serverConfig?.latency || 200);
@@ -196,6 +196,19 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
         </div>
         
         <div className="header-actions">
+          <button 
+            className="btn-multiviewer"
+            onClick={onOpenMultiviewer}
+            title="Open Multiviewer"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="2" y="2" width="9" height="9" rx="1"/>
+              <rect x="13" y="2" width="9" height="9" rx="1"/>
+              <rect x="2" y="13" width="9" height="9" rx="1"/>
+              <rect x="13" y="13" width="9" height="9" rx="1"/>
+            </svg>
+            Multiview
+          </button>
           <button 
             className={`btn-timecode-sync ${timecodeConfig?.syncEnabled ? 'active' : ''}`}
             onClick={() => onToggleTimecodeSync(!timecodeConfig?.syncEnabled)}

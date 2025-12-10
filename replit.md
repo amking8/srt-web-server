@@ -127,3 +127,13 @@ npm run dev
   - Channels receive video regardless of timecode sync status
   - Thresholds: 2 frames = synced, 5 frames = warning, >5 frames = out of sync
   - API endpoints: GET/PUT /api/timecode/config, POST /api/timecode/toggle
+- December 2024 (Multiviewer Feature): Live video monitoring for all channels
+  - Multiviewer modal with adaptive grid layout (2x2, 4x2, 4x3, 4x4)
+  - Live HLS video streaming from each active channel
+  - FFmpeg transcodes UDP multicast to HLS (libx264 ultrafast, ~2-4s latency)
+  - VU-style audio level meters (L/R channels) using ebur128 filter
+  - "No Video" / "Waiting for signal" states for inactive channels
+  - Channel title and timecode overlays
+  - API endpoints: POST /api/multiviewer/start, /stop, GET /status, /audio-levels
+  - HLS endpoints: GET /hls/:channelId/stream.m3u8, /hls/:channelId/:segment
+  - Uses Hls.js library loaded from CDN for browser video playback

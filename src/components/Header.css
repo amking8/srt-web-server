@@ -173,6 +173,31 @@
   background: #ef4444;
 }
 
+.btn-multiviewer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #8b5cf6;
+  border-color: #8b5cf6;
+  color: white;
+}
+
+.btn-multiviewer:hover {
+  background: #7c3aed;
+  border-color: #7c3aed;
+}
+
+.btn-multiviewer svg {
+  opacity: 0.9;
+}
+
 .btn-timecode-sync {
   display: flex;
   align-items: center;
