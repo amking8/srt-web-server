@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import os from 'os';
 import { SRTManager } from './srt-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -194,6 +195,46 @@ app.delete('/api/logs', (req, res) => {
 
 app.get('/api/stats', (req, res) => {
   res.json(srtManager.getStats());
+});
+
+app.get('/api/network/interfaces', (req, res) => {
+  const interfaces = os.networkInterfaces();
+  const result = [];
+  
+  for (const [name, addrs] of Object.entries(interfaces)) {
+    for (const addr of addrs) {
+      if (addr.family === 'IPv4' && !addr.internal) {
+        result.push({
+          name: name,
+          address: addr.address,
+          netmask: addr.netmask
+        });
+      }
+    }
+  }
+  
+  res.json(result);
+});
+
+app.get('/api/network/public-ip', async (req, res) => {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch('https://api.ipify.org?format=json', {
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch public IP');
+    }
+    
+    const data = await response.json();
+    res.json({ ip: data.ip });
+  } catch (error) {
+    res.status(503).json({ error: 'Unable to detect public IP', message: error.message });
+  }
 });
 
 app.get('*', (req, res) => {

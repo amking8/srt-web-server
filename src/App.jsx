@@ -245,6 +245,7 @@ function App() {
             </div>
             <ChannelGrid
               channels={channels}
+              serverConfig={serverConfig}
               onEdit={handleEditChannel}
               onDisconnect={handleDisconnectChannel}
               onResetBuffer={handleResetBuffer}

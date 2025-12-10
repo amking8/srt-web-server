@@ -107,3 +107,9 @@ npm run dev
   - Added Start/Stop Server controls in header
   - Auto-reconnect after channel disconnection
   - Each channel displays SRT port and multicast output
+- December 2024 (Connection Types): Matching SRT Mini Server connection tabs
+  - Added LOCALNET / INTERNET connection type tabs
+  - Settings modal for configuring local IP and public IP/port
+  - Auto-detect public IP via external API
+  - Channel cards show dynamic SRT URLs based on active connection mode
+  - Copy to clipboard buttons for connection strings
