@@ -113,3 +113,4 @@ npm run dev
   - Auto-detect public IP via external API
   - Channel cards show dynamic SRT URLs based on active connection mode
   - Copy to clipboard buttons for connection strings
+  - Added configurable channel count (4, 8, 12, or 16 channels)

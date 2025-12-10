@@ -24,7 +24,8 @@ export class SRTManager extends EventEmitter {
       connectionMode: 'local',
       localIp: '',
       publicIp: '',
-      publicPort: 9000
+      publicPort: 9000,
+      channelCount: 16
     };
     
     if (!existsSync(this.recordingsDir)) {
@@ -112,6 +113,9 @@ export class SRTManager extends EventEmitter {
       this.stopAllChannels();
     }
     
+    const newChannelCount = config.channelCount ?? this.serverConfig.channelCount;
+    const channelCountChanged = newChannelCount !== this.serverConfig.channelCount;
+    
     this.serverConfig = {
       ...this.serverConfig,
       srtPort: config.srtPort ?? this.serverConfig.srtPort,
@@ -121,8 +125,13 @@ export class SRTManager extends EventEmitter {
       connectionMode: config.connectionMode ?? this.serverConfig.connectionMode,
       localIp: config.localIp ?? this.serverConfig.localIp,
       publicIp: config.publicIp ?? this.serverConfig.publicIp,
-      publicPort: config.publicPort ?? this.serverConfig.publicPort
+      publicPort: config.publicPort ?? this.serverConfig.publicPort,
+      channelCount: newChannelCount
     };
+    
+    if (channelCountChanged) {
+      this.updateChannelCount(newChannelCount);
+    }
     
     this.addLog('info', `Server config updated: SRT port ${this.serverConfig.srtPort}`);
     this.emit('configUpdate', this.getServerConfig());
@@ -166,6 +175,61 @@ export class SRTManager extends EventEmitter {
 
   isServerRunning() {
     return this.ffmpegProcesses.size > 0;
+  }
+
+  updateChannelCount(newCount) {
+    const currentCount = this.channels.size;
+    
+    if (newCount === currentCount) return;
+    
+    if (newCount < currentCount) {
+      const channelsArray = Array.from(this.channels.values()).sort((a, b) => a.number - b.number);
+      for (let i = newCount; i < currentCount; i++) {
+        const channel = channelsArray[i];
+        if (channel) {
+          this.stopChannel(channel.id);
+          this.channels.delete(channel.id);
+        }
+      }
+      this.addLog('info', `Reduced to ${newCount} channels`);
+    } else {
+      for (let i = currentCount + 1; i <= newCount; i++) {
+        const id = uuidv4();
+        const channel = {
+          id,
+          number: i,
+          name: `Line ${i}`,
+          streamId: `line${i}`,
+          srtPort: this.serverConfig.srtPort + (i - 1),
+          multicastAddress: `239.255.0.${i}`,
+          multicastPort: 5004 + (i - 1),
+          status: 'stopped',
+          connectedClients: 0,
+          bytesReceived: 0,
+          bytesSent: 0,
+          bitrate: 0,
+          startedAt: null,
+          uptime: 0,
+          fps: 0,
+          rtt: 0,
+          packetsLost: 0,
+          packetsDropped: 0,
+          encoderIp: null,
+          isRecording: false,
+          recordingFile: null,
+          recordingFormat: 'ts',
+          bufferStart: 100,
+          bufferMax: 400,
+          inputFps: 'auto',
+          timecodeSource: 'none'
+        };
+        this.channels.set(id, channel);
+      }
+      this.addLog('info', `Expanded to ${newCount} channels`);
+    }
+    
+    this.numChannels = newCount;
+    this.emit('channelUpdate', this.getChannels());
   }
 
   getChannelPort(channel) {

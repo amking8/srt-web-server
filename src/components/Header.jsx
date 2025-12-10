@@ -9,6 +9,7 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
   const [localIp, setLocalIp] = useState(serverConfig?.localIp || '');
   const [publicIp, setPublicIp] = useState(serverConfig?.publicIp || '');
   const [publicPort, setPublicPort] = useState(serverConfig?.publicPort || 9000);
+  const [channelCount, setChannelCount] = useState(serverConfig?.channelCount || 16);
   const [networkInterfaces, setNetworkInterfaces] = useState([]);
   const [loadingPublicIp, setLoadingPublicIp] = useState(false);
 
@@ -20,6 +21,7 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
       setLocalIp(serverConfig.localIp || '');
       setPublicIp(serverConfig.publicIp || '');
       setPublicPort(serverConfig.publicPort || serverConfig.srtPort);
+      setChannelCount(serverConfig.channelCount || 16);
     }
   }, [serverConfig]);
 
@@ -59,7 +61,8 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
       connectionMode,
       localIp,
       publicIp,
-      publicPort: parseInt(publicPort, 10)
+      publicPort: parseInt(publicPort, 10),
+      channelCount: parseInt(channelCount, 10)
     });
     setShowSettings(false);
   };
@@ -209,6 +212,19 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
               <div className="settings-section">
                 <h4>Server Settings</h4>
                 <div className="setting-group">
+                  <label>Number of Channels</label>
+                  <select 
+                    value={channelCount} 
+                    onChange={e => setChannelCount(e.target.value)}
+                  >
+                    <option value="4">4 Channels</option>
+                    <option value="8">8 Channels</option>
+                    <option value="12">12 Channels</option>
+                    <option value="16">16 Channels</option>
+                  </select>
+                  <span className="help-text">Number of channel lines to display</span>
+                </div>
+                <div className="setting-group">
                   <label>SRT Base Port</label>
                   <input 
                     type="number" 
@@ -217,7 +233,7 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
                     min="1024"
                     max="65535"
                   />
-                  <span className="help-text">Channels use ports {portValue} - {parseInt(portValue) + 15}</span>
+                  <span className="help-text">Channels use ports {portValue} - {parseInt(portValue) + parseInt(channelCount) - 1}</span>
                 </div>
                 <div className="setting-group">
                   <label>Default Latency (ms)</label>
