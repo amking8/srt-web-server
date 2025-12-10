@@ -66,6 +66,10 @@ srtManager.on('configUpdate', (config) => {
   broadcast({ type: 'serverConfig', data: config });
 });
 
+srtManager.on('timecodeUpdate', (channels) => {
+  broadcast({ type: 'timecode', data: channels });
+});
+
 app.get('/api/channels', (req, res) => {
   res.json(srtManager.getChannels());
 });
@@ -139,6 +143,19 @@ app.post('/api/channels/:id/reset-buffer', (req, res) => {
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
+});
+
+app.post('/api/channels/:id/set-reference', (req, res) => {
+  try {
+    srtManager.setReferenceChannel(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/timecode/reference', (req, res) => {
+  res.json({ referenceChannelId: srtManager.getReferenceChannel() });
 });
 
 app.post('/api/channels/:id/record/start', (req, res) => {

@@ -12,9 +12,12 @@ export class SRTManager extends EventEmitter {
     this.maxLogs = 500;
     this.ffmpegProcesses = new Map();
     this.recordingProcesses = new Map();
+    this.timecodeProcesses = new Map();
     this.statsInterval = null;
+    this.timecodeInterval = null;
     this.recordingsDir = './recordings';
     this.numChannels = 16;
+    this.referenceChannelId = null;
     
     this.serverConfig = {
       srtPort: 9000,
@@ -65,11 +68,154 @@ export class SRTManager extends EventEmitter {
         bufferStart: 100,
         bufferMax: 400,
         inputFps: 'auto',
-        timecodeSource: 'none'
+        timecodeSource: 'stream',
+        timecode: null,
+        timecodeFrames: 0,
+        syncOffset: 0,
+        syncStatus: 'unknown',
+        isReference: false
       };
       this.channels.set(id, channel);
     }
     this.addLog('info', `Initialized ${this.numChannels} channels`);
+    this.startTimecodeCollection();
+  }
+
+  startTimecodeCollection() {
+    this.timecodeInterval = setInterval(() => {
+      this.channels.forEach(channel => {
+        if (channel.status === 'receiving' && channel.uptime > 0) {
+          this.updateTimecodeFromUptime(channel);
+        }
+      });
+      this.calculateSyncOffsets();
+    }, 33);
+  }
+
+  updateTimecodeFromUptime(channel) {
+    if (!channel.startedAt) return;
+    
+    const fps = channel.fps > 0 ? channel.fps : 30;
+    const elapsedMs = Date.now() - channel.startedAt;
+    const totalFrames = Math.floor((elapsedMs / 1000) * fps);
+    
+    channel.timecode = this.framesToTimecode(totalFrames, fps);
+    channel.timecodeFrames = totalFrames;
+  }
+
+  framesToTimecode(totalFrames, fps) {
+    const framesPerSecond = Math.round(fps);
+    if (framesPerSecond <= 0) return '--:--:--:--';
+    
+    const hours = Math.floor(totalFrames / (framesPerSecond * 3600));
+    const minutes = Math.floor((totalFrames % (framesPerSecond * 3600)) / (framesPerSecond * 60));
+    const seconds = Math.floor((totalFrames % (framesPerSecond * 60)) / framesPerSecond);
+    const frames = totalFrames % framesPerSecond;
+    
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
+  }
+
+  timecodeToFrames(timecode, fps) {
+    const parts = timecode.split(/[:;]/);
+    if (parts.length !== 4) return 0;
+    
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    const seconds = parseInt(parts[2], 10);
+    const frames = parseInt(parts[3], 10);
+    
+    return Math.round((hours * 3600 + minutes * 60 + seconds) * fps + frames);
+  }
+
+  ptsToTimecode(pts, fps) {
+    const totalFrames = Math.round(pts * fps);
+    const framesPerSecond = Math.round(fps);
+    
+    const hours = Math.floor(totalFrames / (framesPerSecond * 3600));
+    const minutes = Math.floor((totalFrames % (framesPerSecond * 3600)) / (framesPerSecond * 60));
+    const seconds = Math.floor((totalFrames % (framesPerSecond * 60)) / framesPerSecond);
+    const frames = totalFrames % framesPerSecond;
+    
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
+  }
+
+  calculateSyncOffsets() {
+    const receivingChannels = Array.from(this.channels.values())
+      .filter(c => c.status === 'receiving' && c.timecodeFrames > 0);
+    
+    if (receivingChannels.length === 0) {
+      this.channels.forEach(ch => {
+        ch.syncStatus = 'unknown';
+        ch.syncOffset = 0;
+      });
+      return;
+    }
+
+    let referenceChannel = null;
+    
+    if (this.referenceChannelId) {
+      const savedRef = this.channels.get(this.referenceChannelId);
+      if (savedRef && savedRef.status === 'receiving' && savedRef.timecodeFrames > 0) {
+        referenceChannel = savedRef;
+      }
+    }
+    
+    if (!this.referenceChannelId) {
+      referenceChannel = receivingChannels[0];
+      this.referenceChannelId = referenceChannel.id;
+    }
+
+    this.channels.forEach(ch => {
+      ch.isReference = (ch.id === this.referenceChannelId);
+    });
+
+    if (!referenceChannel) {
+      receivingChannels.forEach(channel => {
+        channel.syncStatus = 'waiting_ref';
+        channel.syncOffset = 0;
+      });
+      this.emit('timecodeUpdate', this.getChannels());
+      return;
+    }
+
+    const referenceFrames = referenceChannel.timecodeFrames;
+    const frameThreshold = 2;
+    const warningThreshold = 5;
+
+    receivingChannels.forEach(channel => {
+      if (channel.id === referenceChannel.id) {
+        channel.syncOffset = 0;
+        channel.syncStatus = 'reference';
+        return;
+      }
+
+      const offsetFrames = channel.timecodeFrames - referenceFrames;
+      channel.syncOffset = offsetFrames;
+      
+      const absOffset = Math.abs(offsetFrames);
+      if (absOffset <= frameThreshold) {
+        channel.syncStatus = 'synced';
+      } else if (absOffset <= warningThreshold) {
+        channel.syncStatus = 'warning';
+      } else {
+        channel.syncStatus = 'out_of_sync';
+      }
+    });
+
+    this.emit('timecodeUpdate', this.getChannels());
+  }
+
+  setReferenceChannel(id) {
+    this.channels.forEach(channel => {
+      channel.isReference = (channel.id === id);
+    });
+    this.referenceChannelId = id;
+    this.addLog('info', `Reference channel set to ${this.channels.get(id)?.name || 'Unknown'}`);
+    this.emit('channelUpdate', this.getChannels());
+  }
+
+  getReferenceChannel() {
+    return this.referenceChannelId;
   }
 
   startStatsCollection() {
@@ -221,7 +367,12 @@ export class SRTManager extends EventEmitter {
           bufferStart: 100,
           bufferMax: 400,
           inputFps: 'auto',
-          timecodeSource: 'none'
+          timecodeSource: 'stream',
+          timecode: null,
+          timecodeFrames: 0,
+          syncOffset: 0,
+          syncStatus: 'unknown',
+          isReference: false
         };
         this.channels.set(id, channel);
       }

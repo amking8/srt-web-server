@@ -278,3 +278,78 @@
   color: #6b7280;
   font-size: 0.85rem;
 }
+
+.timecode-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.timecode-value {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.sync-badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.sync-badge.sync-reference {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.sync-badge.sync-ok {
+  background: #22c55e;
+  color: #fff;
+}
+
+.sync-badge.sync-warning {
+  background: #f59e0b;
+  color: #000;
+}
+
+.sync-badge.sync-error {
+  background: #ef4444;
+  color: #fff;
+  animation: sync-alert 0.5s infinite;
+}
+
+.sync-badge.sync-unknown {
+  background: #4b5563;
+  color: #9ca3af;
+}
+
+.sync-badge.sync-waiting {
+  background: #6366f1;
+  color: #fff;
+}
+
+@keyframes sync-alert {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.sync-label {
+  line-height: 1;
+}
+
+.sync-offset {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: 0.65rem;
+  opacity: 0.9;
+}

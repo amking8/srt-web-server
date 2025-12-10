@@ -2,7 +2,7 @@ import React from 'react';
 import ChannelCard from './ChannelCard';
 import './ChannelGrid.css';
 
-function ChannelGrid({ channels, serverConfig, onEdit, onDisconnect, onResetBuffer, onRecord, onStopRecord }) {
+function ChannelGrid({ channels, serverConfig, onEdit, onDisconnect, onResetBuffer, onRecord, onStopRecord, onSetReference }) {
   return (
     <div className="channel-grid">
       {channels.map(channel => (
@@ -15,6 +15,7 @@ function ChannelGrid({ channels, serverConfig, onEdit, onDisconnect, onResetBuff
           onResetBuffer={onResetBuffer}
           onRecord={onRecord}
           onStopRecord={onStopRecord}
+          onSetReference={onSetReference}
         />
       ))}
     </div>

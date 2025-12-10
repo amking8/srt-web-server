@@ -64,6 +64,9 @@ function App() {
         case 'serverConfig':
           setServerConfig(message.data);
           break;
+        case 'timecode':
+          setChannels(message.data);
+          break;
       }
     };
 
@@ -150,6 +153,14 @@ function App() {
       await fetch(`/api/channels/${id}/record/stop`, { method: 'POST' });
     } catch (error) {
       console.error('Failed to stop recording:', error);
+    }
+  };
+
+  const handleSetReference = async (id) => {
+    try {
+      await fetch(`/api/channels/${id}/set-reference`, { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to set reference channel:', error);
     }
   };
 
@@ -251,6 +262,7 @@ function App() {
               onResetBuffer={handleResetBuffer}
               onRecord={handleStartRecording}
               onStopRecord={handleStopRecording}
+              onSetReference={handleSetReference}
             />
           </div>
           
