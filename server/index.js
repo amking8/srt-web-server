@@ -350,6 +350,18 @@ app.get('/api/network/public-ip', async (req, res) => {
   }
 });
 
+// Serve deployment files with correct content-type
+app.get('/download/project.tar.gz', (req, res) => {
+  const filePath = join(__dirname, '../srt-server-deploy.tar.gz');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', 'attachment; filename=project.tar.gz');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('File not found');
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '../dist/index.html'));
 });
