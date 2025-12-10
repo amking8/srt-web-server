@@ -339,6 +339,11 @@
   color: #fff;
 }
 
+.sync-badge.sync-disabled {
+  background: #374151;
+  color: #6b7280;
+}
+
 @keyframes sync-alert {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }

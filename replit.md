@@ -115,10 +115,14 @@ npm run dev
   - Copy to clipboard buttons for connection strings
   - Added configurable channel count (4, 8, 12, or 16 channels)
 - December 2024 (TimeCode Synchronization): Critical feature for live sports production
-  - Real-time timecode extraction from incoming SRT streams via FFprobe
   - SMPTE timecode display (HH:MM:SS:FF) on each receiving channel
+  - Timecode sources: uptime (elapsed time), stream (embedded SEI/LTC), or none
+  - Channels receive video regardless of timecode sync status
   - Reference channel system for multi-camera sync offset calculation
-  - Sync status indicators: REF (reference), SYNC (in sync), DRIFT (warning), OUT (out of sync)
+  - Sync status indicators: REF, SYNC, DRIFT, OUT, WAIT, OFF (disabled)
   - Frame-accurate offset display showing +/-Nf relative to reference
   - Set any receiving channel as reference via channel menu
+  - Sync can be disabled per-channel (syncEnabled flag)
   - Thresholds: 2 frames = synced, 5 frames = warning, >5 frames = out of sync
+  - Reference channel persists when offline; other channels show WAIT status
+  - Matches SRT Mini Server timecode workflow (SEI/LTC/VITC methods)

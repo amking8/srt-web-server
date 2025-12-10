@@ -39,6 +39,7 @@ function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffe
       case 'warning': return 'sync-warning';
       case 'out_of_sync': return 'sync-error';
       case 'waiting_ref': return 'sync-waiting';
+      case 'disabled': return 'sync-disabled';
       default: return 'sync-unknown';
     }
   };
@@ -50,6 +51,7 @@ function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffe
       case 'warning': return 'DRIFT';
       case 'out_of_sync': return 'OUT';
       case 'waiting_ref': return 'WAIT';
+      case 'disabled': return 'OFF';
       default: return '---';
     }
   };
