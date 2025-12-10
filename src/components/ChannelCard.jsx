@@ -17,7 +17,7 @@ function formatUptime(seconds) {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
-function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffer, onRecord, onStopRecord }) {
+function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffer, onRecord, onStopRecord, onSetReference }) {
   const [showMenu, setShowMenu] = useState(false);
 
   const getStatusClass = () => {
@@ -30,6 +30,34 @@ function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffe
     if (channel.status === 'receiving') return 'green';
     if (channel.status === 'waiting') return 'yellow';
     return 'gray';
+  };
+
+  const getSyncStatusClass = () => {
+    switch (channel.syncStatus) {
+      case 'reference': return 'sync-reference';
+      case 'synced': return 'sync-ok';
+      case 'warning': return 'sync-warning';
+      case 'out_of_sync': return 'sync-error';
+      case 'waiting_ref': return 'sync-waiting';
+      default: return 'sync-unknown';
+    }
+  };
+
+  const getSyncStatusText = () => {
+    switch (channel.syncStatus) {
+      case 'reference': return 'REF';
+      case 'synced': return 'SYNC';
+      case 'warning': return 'DRIFT';
+      case 'out_of_sync': return 'OUT';
+      case 'waiting_ref': return 'WAIT';
+      default: return '---';
+    }
+  };
+
+  const formatSyncOffset = (frames) => {
+    if (frames === 0) return '0f';
+    const sign = frames > 0 ? '+' : '';
+    return `${sign}${frames}f`;
   };
 
   const getConnectionIp = () => {
@@ -88,6 +116,11 @@ function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffe
                 <button onClick={() => { onResetBuffer(channel.id); setShowMenu(false); }}>
                   Reset Buffer
                 </button>
+                {!channel.isReference && (
+                  <button onClick={() => { onSetReference(channel.id); setShowMenu(false); }}>
+                    Set as Reference
+                  </button>
+                )}
                 {!channel.isRecording ? (
                   <button onClick={() => { onRecord(channel.id, 'ts'); setShowMenu(false); }}>
                     Start Recording
@@ -106,6 +139,15 @@ function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffe
       <div className="channel-status">
         {channel.status === 'receiving' ? (
           <div className="status-info">
+            <div className="timecode-display">
+              <div className="timecode-value">{channel.timecode || '--:--:--:--'}</div>
+              <div className={`sync-badge ${getSyncStatusClass()}`}>
+                <span className="sync-label">{getSyncStatusText()}</span>
+                {channel.syncStatus !== 'reference' && channel.syncOffset !== 0 && (
+                  <span className="sync-offset">{formatSyncOffset(channel.syncOffset)}</span>
+                )}
+              </div>
+            </div>
             <div className="stat-row">
               <span className="label">Bitrate:</span>
               <span className="value">{channel.bitrate} Kbps</span>

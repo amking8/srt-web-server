@@ -114,3 +114,11 @@ npm run dev
   - Channel cards show dynamic SRT URLs based on active connection mode
   - Copy to clipboard buttons for connection strings
   - Added configurable channel count (4, 8, 12, or 16 channels)
+- December 2024 (TimeCode Synchronization): Critical feature for live sports production
+  - Real-time timecode extraction from incoming SRT streams via FFprobe
+  - SMPTE timecode display (HH:MM:SS:FF) on each receiving channel
+  - Reference channel system for multi-camera sync offset calculation
+  - Sync status indicators: REF (reference), SYNC (in sync), DRIFT (warning), OUT (out of sync)
+  - Frame-accurate offset display showing +/-Nf relative to reference
+  - Set any receiving channel as reference via channel menu
+  - Thresholds: 2 frames = synced, 5 frames = warning, >5 frames = out of sync
