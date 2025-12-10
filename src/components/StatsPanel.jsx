@@ -20,42 +20,43 @@ function StatsPanel({ stats }) {
   return (
     <div className="stats-panel">
       <div className="stat-card">
-        <div className="stat-icon streams">
+        <div className="stat-icon channels">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 6h16M4 12h16M4 18h16"/>
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
         </div>
         <div className="stat-info">
-          <span className="stat-value">{stats.totalStreams}</span>
-          <span className="stat-label">Total Streams</span>
+          <span className="stat-value">{stats.totalChannels || 16}</span>
+          <span className="stat-label">Total Channels</span>
         </div>
       </div>
 
       <div className="stat-card">
-        <div className="stat-icon active">
+        <div className="stat-icon receiving">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10"/>
             <polygon points="10,8 16,12 10,16" fill="currentColor"/>
           </svg>
         </div>
         <div className="stat-info">
-          <span className="stat-value">{stats.activeStreams}</span>
-          <span className="stat-label">Active Streams</span>
+          <span className="stat-value">{stats.receivingChannels || 0}</span>
+          <span className="stat-label">Receiving</span>
         </div>
       </div>
 
       <div className="stat-card">
-        <div className="stat-icon clients">
+        <div className="stat-icon waiting">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 6v6l4 2"/>
           </svg>
         </div>
         <div className="stat-info">
-          <span className="stat-value">{stats.totalClients}</span>
-          <span className="stat-label">Connected Clients</span>
+          <span className="stat-value">{stats.waitingChannels || 0}</span>
+          <span className="stat-label">Waiting</span>
         </div>
       </div>
 
@@ -68,7 +69,7 @@ function StatsPanel({ stats }) {
           </svg>
         </div>
         <div className="stat-info">
-          <span className="stat-value">{formatBytes(stats.totalBytesReceived)}</span>
+          <span className="stat-value">{formatBytes(stats.totalBytesReceived || 0)}</span>
           <span className="stat-label">Data Received</span>
         </div>
       </div>
@@ -82,7 +83,7 @@ function StatsPanel({ stats }) {
           </svg>
         </div>
         <div className="stat-info">
-          <span className="stat-value">{formatBytes(stats.totalBytesSent)}</span>
+          <span className="stat-value">{formatBytes(stats.totalBytesSent || 0)}</span>
           <span className="stat-label">Data Sent</span>
         </div>
       </div>
@@ -94,7 +95,7 @@ function StatsPanel({ stats }) {
           </svg>
         </div>
         <div className="stat-info">
-          <span className="stat-value">{formatBitrate(stats.totalBitrate)}</span>
+          <span className="stat-value">{formatBitrate(stats.totalBitrate || 0)}</span>
           <span className="stat-label">Total Bitrate</span>
         </div>
       </div>

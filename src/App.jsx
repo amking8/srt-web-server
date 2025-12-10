@@ -1,24 +1,30 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
-import StreamList from './components/StreamList';
-import StreamForm from './components/StreamForm';
+import ChannelGrid from './components/ChannelGrid';
+import ChannelForm from './components/ChannelForm';
 import LogViewer from './components/LogViewer';
 import StatsPanel from './components/StatsPanel';
 import './App.css';
 
 function App() {
-  const [streams, setStreams] = useState([]);
+  const [channels, setChannels] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [serverConfig, setServerConfig] = useState({
+    srtPort: 9000,
+    latency: 200
+  });
   const [stats, setStats] = useState({
-    totalStreams: 0,
-    activeStreams: 0,
-    totalClients: 0,
+    totalChannels: 16,
+    receivingChannels: 0,
+    waitingChannels: 0,
     totalBytesReceived: 0,
     totalBytesSent: 0,
-    totalBitrate: 0
+    totalBitrate: 0,
+    srtPort: 9000
   });
   const [showForm, setShowForm] = useState(false);
-  const [editingStream, setEditingStream] = useState(null);
+  const [editingChannel, setEditingChannel] = useState(null);
+  const [serverRunning, setServerRunning] = useState(false);
   const [ws, setWs] = useState(null);
 
   const connectWebSocket = useCallback(() => {
@@ -35,11 +41,15 @@ function App() {
       
       switch (message.type) {
         case 'init':
-          setStreams(message.data.streams);
-          setLogs(message.data.logs);
+          setChannels(message.data.channels || []);
+          setLogs(message.data.logs || []);
+          if (message.data.serverConfig) setServerConfig(message.data.serverConfig);
+          if (message.data.stats) setStats(prev => ({ ...prev, ...message.data.stats }));
           break;
-        case 'streams':
-          setStreams(message.data);
+        case 'channels':
+          setChannels(message.data);
+          const hasRunning = message.data.some(c => c.status === 'waiting' || c.status === 'receiving');
+          setServerRunning(hasRunning);
           break;
         case 'log':
           if (message.data.cleared) {
@@ -49,7 +59,10 @@ function App() {
           }
           break;
         case 'stats':
-          setStats(message.data);
+          if (message.data) setStats(prev => ({ ...prev, ...message.data }));
+          break;
+        case 'serverConfig':
+          setServerConfig(message.data);
           break;
       }
     };
@@ -75,64 +88,24 @@ function App() {
     return cleanup;
   }, [connectWebSocket]);
 
-  const handleCreateStream = async (config) => {
+  const handleUpdateChannel = async (id, config) => {
     try {
-      const response = await fetch('/api/streams', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
-      });
-      if (response.ok) {
-        setShowForm(false);
-      }
-    } catch (error) {
-      console.error('Failed to create stream:', error);
-    }
-  };
-
-  const handleUpdateStream = async (id, config) => {
-    try {
-      const response = await fetch(`/api/streams/${id}`, {
+      const response = await fetch(`/api/channels/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
       });
       if (response.ok) {
-        setEditingStream(null);
+        setEditingChannel(null);
         setShowForm(false);
       }
     } catch (error) {
-      console.error('Failed to update stream:', error);
+      console.error('Failed to update channel:', error);
     }
   };
 
-  const handleDeleteStream = async (id) => {
-    if (!confirm('Are you sure you want to delete this stream?')) return;
-    try {
-      await fetch(`/api/streams/${id}`, { method: 'DELETE' });
-    } catch (error) {
-      console.error('Failed to delete stream:', error);
-    }
-  };
-
-  const handleStartStream = async (id) => {
-    try {
-      await fetch(`/api/streams/${id}/start`, { method: 'POST' });
-    } catch (error) {
-      console.error('Failed to start stream:', error);
-    }
-  };
-
-  const handleStopStream = async (id) => {
-    try {
-      await fetch(`/api/streams/${id}/stop`, { method: 'POST' });
-    } catch (error) {
-      console.error('Failed to stop stream:', error);
-    }
-  };
-
-  const handleEditStream = (stream) => {
-    setEditingStream(stream);
+  const handleEditChannel = (channel) => {
+    setEditingChannel(channel);
     setShowForm(true);
   };
 
@@ -144,17 +117,17 @@ function App() {
     }
   };
 
-  const handleDisconnectStream = async (id) => {
+  const handleDisconnectChannel = async (id) => {
     try {
-      await fetch(`/api/streams/${id}/disconnect`, { method: 'POST' });
+      await fetch(`/api/channels/${id}/disconnect`, { method: 'POST' });
     } catch (error) {
-      console.error('Failed to disconnect stream:', error);
+      console.error('Failed to disconnect channel:', error);
     }
   };
 
   const handleResetBuffer = async (id) => {
     try {
-      await fetch(`/api/streams/${id}/reset-buffer`, { method: 'POST' });
+      await fetch(`/api/channels/${id}/reset-buffer`, { method: 'POST' });
     } catch (error) {
       console.error('Failed to reset buffer:', error);
     }
@@ -162,7 +135,7 @@ function App() {
 
   const handleStartRecording = async (id, format) => {
     try {
-      await fetch(`/api/streams/${id}/record/start`, {
+      await fetch(`/api/channels/${id}/record/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ format })
@@ -174,9 +147,39 @@ function App() {
 
   const handleStopRecording = async (id) => {
     try {
-      await fetch(`/api/streams/${id}/record/stop`, { method: 'POST' });
+      await fetch(`/api/channels/${id}/record/stop`, { method: 'POST' });
     } catch (error) {
       console.error('Failed to stop recording:', error);
+    }
+  };
+
+  const handleStartServer = async () => {
+    try {
+      await fetch('/api/server/start', { method: 'POST' });
+      setServerRunning(true);
+    } catch (error) {
+      console.error('Failed to start server:', error);
+    }
+  };
+
+  const handleStopServer = async () => {
+    try {
+      await fetch('/api/server/stop', { method: 'POST' });
+      setServerRunning(false);
+    } catch (error) {
+      console.error('Failed to stop server:', error);
+    }
+  };
+
+  const handleUpdateServerConfig = async (config) => {
+    try {
+      await fetch('/api/server-config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+    } catch (error) {
+      console.error('Failed to update server config:', error);
     }
   };
 
@@ -220,10 +223,11 @@ function App() {
   return (
     <div className="app">
       <Header 
-        onAddStream={() => {
-          setEditingStream(null);
-          setShowForm(true);
-        }}
+        serverConfig={serverConfig}
+        serverRunning={serverRunning}
+        onStartServer={handleStartServer}
+        onStopServer={handleStopServer}
+        onUpdateConfig={handleUpdateServerConfig}
         onSaveConfig={handleSaveConfig}
         onLoadConfig={handleLoadConfig}
       />
@@ -232,18 +236,17 @@ function App() {
         <StatsPanel stats={stats} />
         
         <div className="content-grid">
-          <div className="streams-section">
+          <div className="channels-section">
             <div className="section-header">
-              <h2>Stream Lines</h2>
-              <span className="count">{streams.length} configured</span>
+              <h2>Channel Lines</h2>
+              <span className="count">
+                {stats.receivingChannels} receiving / {stats.waitingChannels} waiting
+              </span>
             </div>
-            <StreamList
-              streams={streams}
-              onStart={handleStartStream}
-              onStop={handleStopStream}
-              onEdit={handleEditStream}
-              onDelete={handleDeleteStream}
-              onDisconnect={handleDisconnectStream}
+            <ChannelGrid
+              channels={channels}
+              onEdit={handleEditChannel}
+              onDisconnect={handleDisconnectChannel}
               onResetBuffer={handleResetBuffer}
               onRecord={handleStartRecording}
               onStopRecord={handleStopRecording}
@@ -260,16 +263,13 @@ function App() {
         </div>
       </main>
 
-      {showForm && (
-        <StreamForm
-          stream={editingStream}
-          onSubmit={editingStream 
-            ? (config) => handleUpdateStream(editingStream.id, config)
-            : handleCreateStream
-          }
+      {showForm && editingChannel && (
+        <ChannelForm
+          channel={editingChannel}
+          onSubmit={(config) => handleUpdateChannel(editingChannel.id, config)}
           onClose={() => {
             setShowForm(false);
-            setEditingStream(null);
+            setEditingChannel(null);
           }}
         />
       )}
