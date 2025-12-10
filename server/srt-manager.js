@@ -68,11 +68,13 @@ export class SRTManager extends EventEmitter {
         bufferStart: 100,
         bufferMax: 400,
         inputFps: 'auto',
-        timecodeSource: 'stream',
-        timecode: null,
+        timecodeSource: 'uptime',
+        timecode: '00:00:00:00',
         timecodeFrames: 0,
+        hasEmbeddedTimecode: false,
         syncOffset: 0,
         syncStatus: 'unknown',
+        syncEnabled: true,
         isReference: false
       };
       this.channels.set(id, channel);
@@ -84,16 +86,36 @@ export class SRTManager extends EventEmitter {
   startTimecodeCollection() {
     this.timecodeInterval = setInterval(() => {
       this.channels.forEach(channel => {
-        if (channel.status === 'receiving' && channel.uptime > 0) {
-          this.updateTimecodeFromUptime(channel);
+        if (channel.status === 'receiving') {
+          this.updateChannelTimecode(channel);
+        } else {
+          channel.timecode = '00:00:00:00';
+          channel.timecodeFrames = 0;
         }
       });
       this.calculateSyncOffsets();
     }, 33);
   }
 
+  updateChannelTimecode(channel) {
+    if (channel.timecodeSource === 'uptime') {
+      this.updateTimecodeFromUptime(channel);
+    } else if (channel.timecodeSource === 'stream') {
+      if (!channel.hasEmbeddedTimecode) {
+        this.updateTimecodeFromUptime(channel);
+      }
+    } else if (channel.timecodeSource === 'none') {
+      channel.timecode = '00:00:00:00';
+      channel.timecodeFrames = 0;
+    }
+  }
+
   updateTimecodeFromUptime(channel) {
-    if (!channel.startedAt) return;
+    if (!channel.startedAt) {
+      channel.timecode = '00:00:00:00';
+      channel.timecodeFrames = 0;
+      return;
+    }
     
     const fps = channel.fps > 0 ? channel.fps : 30;
     const elapsedMs = Date.now() - channel.startedAt;
@@ -101,6 +123,15 @@ export class SRTManager extends EventEmitter {
     
     channel.timecode = this.framesToTimecode(totalFrames, fps);
     channel.timecodeFrames = totalFrames;
+  }
+
+  setEmbeddedTimecode(channelId, timecode, fps) {
+    const channel = this.channels.get(channelId);
+    if (!channel) return;
+    
+    channel.hasEmbeddedTimecode = true;
+    channel.timecode = timecode;
+    channel.timecodeFrames = this.timecodeToFrames(timecode, fps || channel.fps || 30);
   }
 
   framesToTimecode(totalFrames, fps) {
@@ -140,14 +171,21 @@ export class SRTManager extends EventEmitter {
   }
 
   calculateSyncOffsets() {
-    const receivingChannels = Array.from(this.channels.values())
-      .filter(c => c.status === 'receiving' && c.timecodeFrames > 0);
+    const syncEnabledChannels = Array.from(this.channels.values())
+      .filter(c => c.status === 'receiving' && c.syncEnabled && c.timecodeFrames > 0);
     
-    if (receivingChannels.length === 0) {
-      this.channels.forEach(ch => {
+    this.channels.forEach(ch => {
+      if (ch.status !== 'receiving') {
         ch.syncStatus = 'unknown';
         ch.syncOffset = 0;
-      });
+      } else if (!ch.syncEnabled) {
+        ch.syncStatus = 'disabled';
+        ch.syncOffset = 0;
+      }
+    });
+    
+    if (syncEnabledChannels.length === 0) {
+      this.emit('timecodeUpdate', this.getChannels());
       return;
     }
 
@@ -155,13 +193,13 @@ export class SRTManager extends EventEmitter {
     
     if (this.referenceChannelId) {
       const savedRef = this.channels.get(this.referenceChannelId);
-      if (savedRef && savedRef.status === 'receiving' && savedRef.timecodeFrames > 0) {
+      if (savedRef && savedRef.status === 'receiving' && savedRef.syncEnabled && savedRef.timecodeFrames > 0) {
         referenceChannel = savedRef;
       }
     }
     
     if (!this.referenceChannelId) {
-      referenceChannel = receivingChannels[0];
+      referenceChannel = syncEnabledChannels[0];
       this.referenceChannelId = referenceChannel.id;
     }
 
@@ -170,7 +208,7 @@ export class SRTManager extends EventEmitter {
     });
 
     if (!referenceChannel) {
-      receivingChannels.forEach(channel => {
+      syncEnabledChannels.forEach(channel => {
         channel.syncStatus = 'waiting_ref';
         channel.syncOffset = 0;
       });
@@ -182,7 +220,7 @@ export class SRTManager extends EventEmitter {
     const frameThreshold = 2;
     const warningThreshold = 5;
 
-    receivingChannels.forEach(channel => {
+    syncEnabledChannels.forEach(channel => {
       if (channel.id === referenceChannel.id) {
         channel.syncOffset = 0;
         channel.syncStatus = 'reference';
