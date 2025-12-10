@@ -22,6 +22,11 @@ function App() {
     totalBitrate: 0,
     srtPort: 9000
   });
+  const [timecodeConfig, setTimecodeConfig] = useState({
+    syncEnabled: false,
+    syncShiftMs: 0,
+    defaultTimecodeSource: 'sei'
+  });
   const [showForm, setShowForm] = useState(false);
   const [editingChannel, setEditingChannel] = useState(null);
   const [serverRunning, setServerRunning] = useState(false);
@@ -66,6 +71,9 @@ function App() {
           break;
         case 'timecode':
           setChannels(message.data);
+          break;
+        case 'timecodeConfig':
+          setTimecodeConfig(message.data);
           break;
       }
     };
@@ -231,6 +239,32 @@ function App() {
     }
   };
 
+  const handleToggleTimecodeSync = async (enabled) => {
+    try {
+      await fetch('/api/timecode/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      setTimecodeConfig(prev => ({ ...prev, syncEnabled: enabled }));
+    } catch (error) {
+      console.error('Failed to toggle timecode sync:', error);
+    }
+  };
+
+  const handleUpdateTimecodeConfig = async (config) => {
+    try {
+      await fetch('/api/timecode/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      setTimecodeConfig(prev => ({ ...prev, ...config }));
+    } catch (error) {
+      console.error('Failed to update timecode config:', error);
+    }
+  };
+
   return (
     <div className="app">
       <Header 
@@ -241,6 +275,9 @@ function App() {
         onUpdateConfig={handleUpdateServerConfig}
         onSaveConfig={handleSaveConfig}
         onLoadConfig={handleLoadConfig}
+        timecodeConfig={timecodeConfig}
+        onToggleTimecodeSync={handleToggleTimecodeSync}
+        onUpdateTimecodeConfig={handleUpdateTimecodeConfig}
       />
       
       <main className="main-content">

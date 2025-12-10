@@ -158,6 +158,33 @@ app.get('/api/timecode/reference', (req, res) => {
   res.json({ referenceChannelId: srtManager.getReferenceChannel() });
 });
 
+app.get('/api/timecode/config', (req, res) => {
+  res.json(srtManager.getTimecodeConfig());
+});
+
+app.put('/api/timecode/config', (req, res) => {
+  try {
+    srtManager.setTimecodeConfig(req.body);
+    res.json(srtManager.getTimecodeConfig());
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/timecode/toggle', (req, res) => {
+  try {
+    const { enabled } = req.body;
+    srtManager.toggleTimecodeSync(enabled);
+    res.json({ success: true, syncEnabled: enabled });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/timecode/sync-time', (req, res) => {
+  res.json(srtManager.getCurrentSyncTime());
+});
+
 app.post('/api/channels/:id/record/start', (req, res) => {
   try {
     const format = req.body.format || 'ts';
