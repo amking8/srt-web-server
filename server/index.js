@@ -362,6 +362,18 @@ app.get('/download/project.tar.gz', (req, res) => {
   }
 });
 
+// Serve base64 encoded file as plain text
+app.get('/download/project.b64', (req, res) => {
+  const filePath = join(__dirname, '../srt-server-deploy.b64');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(filePath);
+  } else {
+    res.status(404).send('File not found');
+  }
+});
+
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '../dist/index.html'));
 });
