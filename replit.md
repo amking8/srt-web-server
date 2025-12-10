@@ -3,10 +3,17 @@
 ## Overview
 A web-based SRT (Secure Reliable Transport) streaming server that receives incoming SRT feeds and routes them to UDP multicast destinations on the local network. This is a web-based recreation of the SRT Mini Server functionality.
 
+## Architecture (Matching SRT Mini Server)
+- **16 Fixed Channel Lines**: Always-present channels in a 4x4 grid, each with unique Stream ID
+- **Sequential SRT Ports**: Base port + channel number (e.g., 9000, 9001, ... 9015)
+- **Stream ID Routing**: Each channel accepts connections matching its configured Stream ID
+- **Status Indicators**: Gray (stopped), Yellow (waiting), Green (receiving)
+- **Auto-Reconnect**: Channels automatically restart listening after disconnection
+
 ## Features
 - **SRT Listener Server**: Accept incoming SRT streams using FFmpeg's SRT protocol support
 - **UDP Multicast Output**: Route received streams to configurable multicast addresses
-- **Multiple Stream Lines**: Configure up to 16 concurrent streams with unique ports and Stream IDs
+- **16 Channel Lines**: Fixed grid of channels with unique ports and Stream IDs
 - **Real-time Monitoring**: WebSocket-based dashboard with live statistics
 - **Passthrough Mode**: Forward streams as-is without decoding for minimal CPU usage
 - **Connection Logging**: Real-time event and error logging
@@ -19,43 +26,54 @@ A web-based SRT (Secure Reliable Transport) streaming server that receives incom
 
 ### Backend (Node.js/Express)
 - `server/index.js` - Main Express server with WebSocket support for real-time updates
-- `server/srt-manager.js` - SRT stream management class using FFmpeg:
-  - Spawns FFmpeg processes for each stream line
-  - SRT input: `srt://0.0.0.0:port?mode=listener&latency=xxx`
+- `server/srt-manager.js` - SRT channel management class using FFmpeg:
+  - Initializes 16 fixed channels on startup
+  - Each channel gets port = basePort + (channelNumber - 1)
+  - Spawns FFmpeg processes for each channel when server starts
+  - SRT input: `srt://0.0.0.0:port?mode=listener&streamid=xxx&latency=yyy`
   - UDP multicast output: `udp://address:port`
   - Parses FFmpeg output for connection status and statistics
+  - Auto-restarts channels after disconnection
 
 ### Frontend (React/Vite)
 - `src/App.jsx` - Main application with WebSocket connection
-- `src/components/Header.jsx` - Application header with add stream button
-- `src/components/StatsPanel.jsx` - Dashboard statistics display
-- `src/components/StreamList.jsx` - List of configured streams
-- `src/components/StreamCard.jsx` - Individual stream with controls and stats
-- `src/components/StreamForm.jsx` - Modal form for stream configuration
+- `src/components/Header.jsx` - Header with SRT port settings, Start/Stop Server controls
+- `src/components/StatsPanel.jsx` - Dashboard statistics display (channels, receiving, waiting)
+- `src/components/ChannelGrid.jsx` - 4x4 grid of 16 channel cards
+- `src/components/ChannelCard.jsx` - Individual channel with status indicator and stats
+- `src/components/ChannelForm.jsx` - Modal form for channel configuration
 - `src/components/LogViewer.jsx` - Real-time log viewer
 
 ## How to Use
 
-### Creating a Stream
-1. Click "Add Stream" button
-2. Configure:
-   - **Name**: Friendly name for the stream
-   - **SRT Port**: Port to listen for incoming SRT connections (e.g., 9000)
-   - **Stream ID**: Optional identifier for stream routing
+### Starting the Server
+1. Click "Start Server" button in the header
+2. All 16 channels will start listening for SRT connections
+3. Channels show yellow indicator when waiting, green when receiving
+
+### Configuring a Channel
+1. Click the menu (⋮) on any channel card
+2. Select "Configure" to edit:
+   - **Title**: Friendly name for the channel
+   - **Stream ID**: Unique identifier for routing (e.g., camera1, line1)
    - **Multicast Address**: UDP multicast destination (e.g., 239.255.0.1)
    - **Multicast Port**: UDP port for multicast output
-   - **Latency**: SRT receive buffer latency in milliseconds
+   - **Buffer Settings**: Start and max buffer in milliseconds
 
 ### Sending an SRT Stream
 From OBS, vMix, FFmpeg, or other SRT-capable encoders:
 ```
-srt://your-server-ip:9000?streamid=your-stream-id
+srt://your-server-ip:9000?streamid=line1    # Channel 1
+srt://your-server-ip:9001?streamid=line2    # Channel 2
+... (ports 9000-9015 for channels 1-16)
 ```
 
 ### Receiving the Multicast
 Use VLC or any multicast-capable player:
 ```
-udp://@239.255.0.1:5004
+udp://@239.255.0.1:5004   # Channel 1
+udp://@239.255.0.2:5005   # Channel 2
+... (addresses 239.255.0.1-16 for channels 1-16)
 ```
 
 ## Running the Application
@@ -82,3 +100,10 @@ npm run dev
   - Implemented stream recording with TS/MP4 format selection
   - Added disconnect and reset buffer control buttons
   - Added save/load configuration functionality with JSON export/import
+- December 2024 (Architecture Redesign): Match SRT Mini Server design
+  - Replaced dynamic streams with 16 fixed channel lines
+  - Implemented sequential SRT ports (basePort + channelNumber - 1)
+  - Created 4x4 ChannelGrid with yellow/green/gray status indicators
+  - Added Start/Stop Server controls in header
+  - Auto-reconnect after channel disconnection
+  - Each channel displays SRT port and multicast output

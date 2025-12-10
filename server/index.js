@@ -16,24 +16,22 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 app.use(cors());
 app.use(express.json());
 
-// Serve static files in production
 app.use(express.static(join(__dirname, '../dist')));
 
-// SRT Stream Manager
 const srtManager = new SRTManager();
 
-// WebSocket connections for real-time updates
 const wsClients = new Set();
 
 wss.on('connection', (ws) => {
   wsClients.add(ws);
   
-  // Send current state on connection
   ws.send(JSON.stringify({
     type: 'init',
     data: {
-      streams: srtManager.getStreams(),
-      logs: srtManager.getLogs()
+      channels: srtManager.getChannels(),
+      logs: srtManager.getLogs(),
+      serverConfig: srtManager.getServerConfig(),
+      stats: srtManager.getStats()
     }
   }));
 
@@ -42,7 +40,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Broadcast updates to all connected clients
 function broadcast(message) {
   const data = JSON.stringify(message);
   wsClients.forEach(client => {
@@ -52,9 +49,8 @@ function broadcast(message) {
   });
 }
 
-// Set up event listeners for SRT manager
-srtManager.on('streamUpdate', (streams) => {
-  broadcast({ type: 'streams', data: streams });
+srtManager.on('channelUpdate', (channels) => {
+  broadcast({ type: 'channels', data: channels });
 });
 
 srtManager.on('log', (log) => {
@@ -65,89 +61,77 @@ srtManager.on('stats', (stats) => {
   broadcast({ type: 'stats', data: stats });
 });
 
-// API Routes
-
-// Get all stream configurations
-app.get('/api/streams', (req, res) => {
-  res.json(srtManager.getStreams());
+srtManager.on('configUpdate', (config) => {
+  broadcast({ type: 'serverConfig', data: config });
 });
 
-// Get a single stream configuration
-app.get('/api/streams/:id', (req, res) => {
-  const stream = srtManager.getStream(req.params.id);
-  if (stream) {
-    res.json(stream);
+app.get('/api/channels', (req, res) => {
+  res.json(srtManager.getChannels());
+});
+
+app.get('/api/channels/:id', (req, res) => {
+  const channel = srtManager.getChannel(req.params.id);
+  if (channel) {
+    res.json(channel);
   } else {
-    res.status(404).json({ error: 'Stream not found' });
+    res.status(404).json({ error: 'Channel not found' });
   }
 });
 
-// Create a new stream configuration
-app.post('/api/streams', (req, res) => {
+app.put('/api/channels/:id', (req, res) => {
   try {
-    const stream = srtManager.createStream(req.body);
-    res.status(201).json(stream);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// Update a stream configuration
-app.put('/api/streams/:id', (req, res) => {
-  try {
-    const stream = srtManager.updateStream(req.params.id, req.body);
-    if (stream) {
-      res.json(stream);
+    const channel = srtManager.updateChannel(req.params.id, req.body);
+    if (channel) {
+      res.json(channel);
     } else {
-      res.status(404).json({ error: 'Stream not found' });
+      res.status(404).json({ error: 'Channel not found' });
     }
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Delete a stream configuration
-app.delete('/api/streams/:id', (req, res) => {
-  const success = srtManager.deleteStream(req.params.id);
-  if (success) {
-    res.status(204).send();
-  } else {
-    res.status(404).json({ error: 'Stream not found' });
+app.get('/api/server-config', (req, res) => {
+  res.json(srtManager.getServerConfig());
+});
+
+app.put('/api/server-config', (req, res) => {
+  try {
+    const config = srtManager.updateServerConfig(req.body);
+    res.json(config);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 
-// Start a stream
-app.post('/api/streams/:id/start', (req, res) => {
+app.post('/api/server/start', (req, res) => {
   try {
-    srtManager.startStream(req.params.id);
+    srtManager.startAllChannels();
     res.json({ success: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Stop a stream
-app.post('/api/streams/:id/stop', (req, res) => {
+app.post('/api/server/stop', (req, res) => {
   try {
-    srtManager.stopStream(req.params.id);
+    srtManager.stopAllChannels();
     res.json({ success: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Disconnect a stream (stop and reset counters)
-app.post('/api/streams/:id/disconnect', (req, res) => {
+app.post('/api/channels/:id/disconnect', (req, res) => {
   try {
-    srtManager.disconnectStream(req.params.id);
+    srtManager.disconnectChannel(req.params.id);
     res.json({ success: true });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-// Reset buffer (restart stream to clear buffer)
-app.post('/api/streams/:id/reset-buffer', (req, res) => {
+app.post('/api/channels/:id/reset-buffer', (req, res) => {
   try {
     srtManager.resetBuffer(req.params.id);
     res.json({ success: true });
@@ -156,8 +140,7 @@ app.post('/api/streams/:id/reset-buffer', (req, res) => {
   }
 });
 
-// Start recording
-app.post('/api/streams/:id/record/start', (req, res) => {
+app.post('/api/channels/:id/record/start', (req, res) => {
   try {
     const format = req.body.format || 'ts';
     const result = srtManager.startRecording(req.params.id, format);
@@ -167,8 +150,7 @@ app.post('/api/streams/:id/record/start', (req, res) => {
   }
 });
 
-// Stop recording
-app.post('/api/streams/:id/record/stop', (req, res) => {
+app.post('/api/channels/:id/record/stop', (req, res) => {
   try {
     srtManager.stopRecording(req.params.id);
     res.json({ success: true });
@@ -177,7 +159,6 @@ app.post('/api/streams/:id/record/stop', (req, res) => {
   }
 });
 
-// Save configuration
 app.post('/api/config/save', (req, res) => {
   try {
     const filename = req.body.filename || 'srt-config.json';
@@ -188,7 +169,6 @@ app.post('/api/config/save', (req, res) => {
   }
 });
 
-// Load configuration
 app.post('/api/config/load', (req, res) => {
   try {
     const filename = req.body.filename || 'srt-config.json';
@@ -199,33 +179,23 @@ app.post('/api/config/load', (req, res) => {
   }
 });
 
-// List saved configurations
 app.get('/api/config/list', (req, res) => {
   res.json(srtManager.getConfigList());
 });
 
-// List recordings
-app.get('/api/recordings', (req, res) => {
-  res.json(srtManager.getRecordingsList());
-});
-
-// Get logs
 app.get('/api/logs', (req, res) => {
   res.json(srtManager.getLogs());
 });
 
-// Clear logs
 app.delete('/api/logs', (req, res) => {
   srtManager.clearLogs();
   res.status(204).send();
 });
 
-// Get server stats
 app.get('/api/stats', (req, res) => {
   res.json(srtManager.getStats());
 });
 
-// Catch-all for SPA routing
 app.get('*', (req, res) => {
   res.sendFile(join(__dirname, '../dist/index.html'));
 });

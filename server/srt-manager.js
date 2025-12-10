@@ -1,458 +1,443 @@
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import { spawn } from 'child_process';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 export class SRTManager extends EventEmitter {
   constructor() {
     super();
-    this.streams = new Map();
+    this.channels = new Map();
     this.logs = [];
     this.maxLogs = 500;
     this.ffmpegProcesses = new Map();
     this.recordingProcesses = new Map();
     this.statsInterval = null;
     this.recordingsDir = './recordings';
+    this.numChannels = 16;
+    
+    this.serverConfig = {
+      srtPort: 9000,
+      latency: 200,
+      encryption: 'none',
+      passphrase: ''
+    };
     
     if (!existsSync(this.recordingsDir)) {
       mkdirSync(this.recordingsDir, { recursive: true });
     }
     
+    this.initializeChannels();
     this.startStatsCollection();
+  }
+
+  initializeChannels() {
+    for (let i = 1; i <= this.numChannels; i++) {
+      const id = uuidv4();
+      const channel = {
+        id,
+        number: i,
+        name: `Line ${i}`,
+        streamId: `line${i}`,
+        srtPort: this.serverConfig.srtPort + (i - 1),
+        multicastAddress: `239.255.0.${i}`,
+        multicastPort: 5004 + (i - 1),
+        status: 'stopped',
+        connectedClients: 0,
+        bytesReceived: 0,
+        bytesSent: 0,
+        bitrate: 0,
+        startedAt: null,
+        uptime: 0,
+        fps: 0,
+        rtt: 0,
+        packetsLost: 0,
+        packetsDropped: 0,
+        encoderIp: null,
+        isRecording: false,
+        recordingFile: null,
+        recordingFormat: 'ts',
+        bufferStart: 100,
+        bufferMax: 400,
+        inputFps: 'auto',
+        timecodeSource: 'none'
+      };
+      this.channels.set(id, channel);
+    }
+    this.addLog('info', `Initialized ${this.numChannels} channels`);
   }
 
   startStatsCollection() {
     this.statsInterval = setInterval(() => {
+      this.channels.forEach(channel => {
+        if (channel.status === 'receiving' && channel.startedAt) {
+          channel.uptime = Math.floor((Date.now() - channel.startedAt) / 1000);
+        }
+      });
+      
       const stats = this.getStats();
       this.emit('stats', stats);
+      this.emit('channelUpdate', this.getChannels());
     }, 1000);
   }
 
-  getStreams() {
-    return Array.from(this.streams.values());
+  getChannels() {
+    return Array.from(this.channels.values()).sort((a, b) => a.number - b.number);
   }
 
-  getStream(id) {
-    return this.streams.get(id);
+  getChannel(id) {
+    return this.channels.get(id);
   }
 
-  createStream(config) {
-    const id = uuidv4();
-    const stream = {
-      id,
-      name: config.name || `Stream ${this.streams.size + 1}`,
-      srtPort: config.srtPort || 9000 + this.streams.size,
-      streamId: config.streamId || '',
-      multicastAddress: config.multicastAddress || '',
-      multicastPort: config.multicastPort || 5004,
-      latency: config.latency || 200,
-      passthrough: config.passthrough !== false,
-      status: 'stopped',
-      connectedClients: 0,
-      bytesReceived: 0,
-      bytesSent: 0,
-      packetsReceived: 0,
-      packetsSent: 0,
-      bitrate: 0,
-      createdAt: new Date().toISOString(),
-      lastActivity: null,
-      ffmpegPid: null,
-      startedAt: null,
-      uptime: 0,
-      fps: 0,
-      rtt: 0,
-      packetsLost: 0,
-      packetsDropped: 0,
-      encoderIp: null,
-      isRecording: false,
-      recordingFile: null,
-      recordingFormat: 'ts'
+  getChannelByNumber(number) {
+    return Array.from(this.channels.values()).find(c => c.number === number);
+  }
+
+  getChannelByStreamId(streamId) {
+    return Array.from(this.channels.values()).find(c => c.streamId === streamId);
+  }
+
+  getServerConfig() {
+    return { ...this.serverConfig };
+  }
+
+  updateServerConfig(config) {
+    const wasRunning = this.isServerRunning();
+    
+    if (wasRunning) {
+      this.stopAllChannels();
+    }
+    
+    this.serverConfig = {
+      ...this.serverConfig,
+      srtPort: config.srtPort ?? this.serverConfig.srtPort,
+      latency: config.latency ?? this.serverConfig.latency,
+      encryption: config.encryption ?? this.serverConfig.encryption,
+      passphrase: config.passphrase ?? this.serverConfig.passphrase
     };
-
-    this.streams.set(id, stream);
-    this.addLog('info', `Stream "${stream.name}" created on SRT port ${stream.srtPort}`);
-    this.emit('streamUpdate', this.getStreams());
-    return stream;
+    
+    this.addLog('info', `Server config updated: SRT port ${this.serverConfig.srtPort}`);
+    this.emit('configUpdate', this.getServerConfig());
+    
+    if (wasRunning) {
+      this.startAllChannels();
+    }
+    
+    return this.serverConfig;
   }
 
-  updateStream(id, config) {
-    const stream = this.streams.get(id);
-    if (!stream) return null;
+  updateChannel(id, config) {
+    const channel = this.channels.get(id);
+    if (!channel) return null;
 
-    if (stream.status === 'running') {
-      this.stopStream(id);
+    const wasReceiving = channel.status === 'receiving';
+    if (wasReceiving) {
+      this.stopChannel(id);
     }
 
-    Object.assign(stream, {
-      name: config.name ?? stream.name,
-      srtPort: config.srtPort ?? stream.srtPort,
-      streamId: config.streamId ?? stream.streamId,
-      multicastAddress: config.multicastAddress ?? stream.multicastAddress,
-      multicastPort: config.multicastPort ?? stream.multicastPort,
-      latency: config.latency ?? stream.latency,
-      passthrough: config.passthrough ?? stream.passthrough
+    Object.assign(channel, {
+      name: config.name ?? channel.name,
+      streamId: config.streamId ?? channel.streamId,
+      multicastAddress: config.multicastAddress ?? channel.multicastAddress,
+      multicastPort: config.multicastPort ?? channel.multicastPort,
+      bufferStart: config.bufferStart ?? channel.bufferStart,
+      bufferMax: config.bufferMax ?? channel.bufferMax,
+      inputFps: config.inputFps ?? channel.inputFps,
+      timecodeSource: config.timecodeSource ?? channel.timecodeSource
     });
 
-    this.addLog('info', `Stream "${stream.name}" configuration updated`);
-    this.emit('streamUpdate', this.getStreams());
-    return stream;
-  }
-
-  deleteStream(id) {
-    const stream = this.streams.get(id);
-    if (!stream) return false;
-
-    if (stream.status === 'running') {
-      this.stopStream(id);
-    }
-
-    this.streams.delete(id);
-    this.addLog('info', `Stream "${stream.name}" deleted`);
-    this.emit('streamUpdate', this.getStreams());
-    return true;
-  }
-
-  startStream(id) {
-    const stream = this.streams.get(id);
-    if (!stream) {
-      throw new Error('Stream not found');
-    }
-
-    if (stream.status === 'running') {
-      throw new Error('Stream is already running');
-    }
-
-    try {
-      // Build SRT input URL
-      let srtInput = `srt://0.0.0.0:${stream.srtPort}?mode=listener&latency=${stream.latency * 1000}`;
-      if (stream.streamId) {
-        srtInput += `&streamid=${encodeURIComponent(stream.streamId)}`;
-      }
-
-      // Build output - either UDP multicast or null output for monitoring only
-      let output;
-      let outputArgs;
-      
-      if (stream.multicastAddress) {
-        output = `udp://${stream.multicastAddress}:${stream.multicastPort}?pkt_size=1316`;
-        outputArgs = [
-          '-c', 'copy',
-          '-f', 'mpegts',
-          output
-        ];
-      } else {
-        // No multicast configured - just monitor the stream
-        output = 'pipe:1';
-        outputArgs = [
-          '-c', 'copy',
-          '-f', 'mpegts',
-          '-'
-        ];
-      }
-
-      // FFmpeg arguments for SRT to UDP multicast passthrough
-      const ffmpegArgs = [
-        '-hide_banner',
-        '-loglevel', 'info',
-        '-stats',
-        '-i', srtInput,
-        ...outputArgs
-      ];
-
-      this.addLog('info', `Starting FFmpeg for "${stream.name}": ffmpeg ${ffmpegArgs.join(' ')}`);
-
-      const ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-
-      stream.ffmpegPid = ffmpegProcess.pid;
-      this.ffmpegProcesses.set(id, ffmpegProcess);
-
-      // Track connection state
-      let connected = false;
-      let lastBytesReceived = 0;
-
-      // Parse FFmpeg stderr for stats and status
-      ffmpegProcess.stderr.on('data', (data) => {
-        const output = data.toString();
-        
-        // Check for SRT connection
-        if (output.includes('Opening') && output.includes('srt://')) {
-          stream.status = 'waiting';
-          this.addLog('info', `Stream "${stream.name}" waiting for SRT connection on port ${stream.srtPort}`);
-          this.emit('streamUpdate', this.getStreams());
-        }
-
-        // Check for successful connection
-        if (output.includes('Input #0') || output.includes('Stream #0')) {
-          if (!connected) {
-            connected = true;
-            stream.connectedClients = 1;
-            stream.status = 'running';
-            stream.startedAt = Date.now();
-            stream.lastActivity = new Date().toISOString();
-            this.addLog('success', `SRT client connected to stream "${stream.name}"`);
-            this.emit('streamUpdate', this.getStreams());
-          }
-        }
-
-        // Parse encoder IP from SRT connection info
-        const ipMatch = output.match(/from\s+(\d+\.\d+\.\d+\.\d+)/);
-        if (ipMatch && !stream.encoderIp) {
-          stream.encoderIp = ipMatch[1];
-        }
-
-        // Parse stats from FFmpeg output (size, time, bitrate, fps)
-        const sizeMatch = output.match(/size=\s*(\d+)/);
-        const bitrateMatch = output.match(/bitrate=\s*([\d.]+)([kmg])?bits?\/s/i);
-        const fpsMatch = output.match(/fps=\s*([\d.]+)/);
-        const timeMatch = output.match(/time=(\d+):(\d+):(\d+)/);
-        
-        if (sizeMatch) {
-          const newBytes = parseInt(sizeMatch[1]) * 1024;
-          if (newBytes > stream.bytesReceived) {
-            stream.bytesReceived = newBytes;
-            stream.bytesSent = stream.multicastAddress ? newBytes : 0;
-            stream.lastActivity = new Date().toISOString();
-          }
-        }
-
-        if (bitrateMatch) {
-          let bitrate = parseFloat(bitrateMatch[1]);
-          const unit = (bitrateMatch[2] || '').toLowerCase();
-          if (unit === 'k') bitrate = bitrate;
-          else if (unit === 'm') bitrate = bitrate * 1000;
-          else if (unit === 'g') bitrate = bitrate * 1000000;
-          stream.bitrate = Math.round(bitrate);
-        }
-
-        if (fpsMatch) {
-          stream.fps = parseFloat(fpsMatch[1]);
-        }
-
-        if (stream.startedAt) {
-          stream.uptime = Math.floor((Date.now() - stream.startedAt) / 1000);
-        }
-
-        // Parse drop/loss info from FFmpeg output
-        const dropMatch = output.match(/drop=(\d+)/);
-        const dupMatch = output.match(/dup=(\d+)/);
-        if (dropMatch) {
-          stream.packetsDropped = parseInt(dropMatch[1]);
-        }
-        if (dupMatch) {
-          stream.packetsLost = parseInt(dupMatch[1]);
-        }
-
-        // Log errors
-        if (output.toLowerCase().includes('error') && !output.includes('hide_banner')) {
-          this.addLog('error', `FFmpeg: ${output.trim().substring(0, 200)}`);
-        }
-      });
-
-      ffmpegProcess.stdout.on('data', (data) => {
-        // Count bytes for streams without multicast (piped to stdout)
-        if (!stream.multicastAddress) {
-          stream.bytesReceived += data.length;
-          stream.packetsReceived++;
-        }
-      });
-
-      ffmpegProcess.on('close', (code) => {
-        stream.status = 'stopped';
-        stream.connectedClients = 0;
-        stream.bitrate = 0;
-        stream.ffmpegPid = null;
-        stream.startedAt = null;
-        stream.uptime = 0;
-        stream.fps = 0;
-        stream.encoderIp = null;
-        this.ffmpegProcesses.delete(id);
-        
-        if (stream.isRecording) {
-          this.stopRecording(id);
-        }
-        
-        if (code === 0) {
-          this.addLog('info', `Stream "${stream.name}" ended normally`);
-        } else if (code !== null) {
-          this.addLog('warning', `Stream "${stream.name}" ended with code ${code}`);
-        }
-        this.emit('streamUpdate', this.getStreams());
-      });
-
-      ffmpegProcess.on('error', (err) => {
-        stream.status = 'error';
-        this.addLog('error', `Failed to start FFmpeg for "${stream.name}": ${err.message}`);
-        this.emit('streamUpdate', this.getStreams());
-      });
-
-      stream.status = 'starting';
-      this.addLog('info', `Stream "${stream.name}" starting...`);
-      this.emit('streamUpdate', this.getStreams());
-
-    } catch (error) {
-      stream.status = 'error';
-      this.addLog('error', `Failed to start stream "${stream.name}": ${error.message}`);
-      this.emit('streamUpdate', this.getStreams());
-      throw error;
-    }
-  }
-
-  stopStream(id) {
-    const stream = this.streams.get(id);
-    if (!stream) {
-      throw new Error('Stream not found');
-    }
-
-    const ffmpegProcess = this.ffmpegProcesses.get(id);
-    if (ffmpegProcess) {
-      // Send SIGTERM for graceful shutdown
-      ffmpegProcess.kill('SIGTERM');
-      
-      // Force kill after 3 seconds if still running
-      setTimeout(() => {
-        if (this.ffmpegProcesses.has(id)) {
-          ffmpegProcess.kill('SIGKILL');
-        }
-      }, 3000);
-    }
-
-    stream.status = 'stopping';
-    this.addLog('info', `Stopping stream "${stream.name}"...`);
-    this.emit('streamUpdate', this.getStreams());
-  }
-
-  addLog(level, message) {
-    const log = {
-      id: uuidv4(),
-      level,
-      message,
-      timestamp: new Date().toISOString()
-    };
-
-    this.logs.unshift(log);
+    this.addLog('info', `Channel ${channel.number} "${channel.name}" updated`);
+    this.emit('channelUpdate', this.getChannels());
     
-    if (this.logs.length > this.maxLogs) {
-      this.logs = this.logs.slice(0, this.maxLogs);
+    if (wasReceiving) {
+      this.startChannel(id);
+    }
+    
+    return channel;
+  }
+
+  isServerRunning() {
+    return this.ffmpegProcesses.size > 0;
+  }
+
+  getChannelPort(channel) {
+    return this.serverConfig.srtPort + (channel.number - 1);
+  }
+
+  startChannel(id) {
+    const channel = this.channels.get(id);
+    if (!channel) {
+      throw new Error('Channel not found');
     }
 
-    this.emit('log', log);
-    return log;
-  }
-
-  getLogs() {
-    return this.logs;
-  }
-
-  clearLogs() {
-    this.logs = [];
-    this.emit('log', { cleared: true });
-  }
-
-  getStats() {
-    const streams = this.getStreams();
-    return {
-      totalStreams: streams.length,
-      activeStreams: streams.filter(s => s.status === 'running' || s.status === 'waiting').length,
-      totalClients: streams.reduce((acc, s) => acc + s.connectedClients, 0),
-      totalBytesReceived: streams.reduce((acc, s) => acc + s.bytesReceived, 0),
-      totalBytesSent: streams.reduce((acc, s) => acc + s.bytesSent, 0),
-      totalBitrate: streams.reduce((acc, s) => acc + s.bitrate, 0)
-    };
-  }
-
-  disconnectStream(id) {
-    const stream = this.streams.get(id);
-    if (!stream) {
-      throw new Error('Stream not found');
+    if (this.ffmpegProcesses.has(id)) {
+      return channel;
     }
 
-    if (stream.status !== 'running' && stream.status !== 'waiting') {
-      throw new Error('Stream is not active');
+    const channelPort = this.getChannelPort(channel);
+    
+    let srtInput = `srt://0.0.0.0:${channelPort}?mode=listener&latency=${this.serverConfig.latency * 1000}`;
+    
+    if (channel.streamId) {
+      srtInput += `&streamid=${encodeURIComponent(channel.streamId)}`;
     }
 
-    if (stream.isRecording) {
+    channel.srtPort = channelPort;
+
+    const ffmpegArgs = [
+      '-hide_banner',
+      '-loglevel', 'info',
+      '-stats',
+      '-stats_period', '1',
+      '-i', srtInput,
+      '-c', 'copy',
+      '-f', 'mpegts',
+      `udp://${channel.multicastAddress}:${channel.multicastPort}?pkt_size=1316`
+    ];
+
+    const ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    this.ffmpegProcesses.set(id, ffmpegProcess);
+    channel.status = 'waiting';
+    channel.ffmpegPid = ffmpegProcess.pid;
+
+    ffmpegProcess.stderr.on('data', (data) => {
+      this.parseFFmpegOutput(id, data.toString());
+    });
+
+    ffmpegProcess.on('close', (code) => {
+      const wasReceiving = channel.status === 'receiving';
+      const wasWaiting = channel.status === 'waiting';
+      const shouldRestart = wasReceiving || wasWaiting;
+      
+      this.ffmpegProcesses.delete(id);
+      channel.ffmpegPid = null;
+      
+      if (wasReceiving) {
+        channel.connectedClients = 0;
+        channel.encoderIp = null;
+        this.addLog('info', `Channel ${channel.number} "${channel.name}" disconnected`);
+      }
+      
+      if (shouldRestart) {
+        channel.status = 'waiting';
+        
+        setTimeout(() => {
+          if (!this.ffmpegProcesses.has(id) && channel.status === 'waiting') {
+            try {
+              this.startChannel(id);
+            } catch (e) {
+              this.addLog('warning', `Failed to restart channel ${channel.number}: ${e.message}`);
+            }
+          }
+        }, 1000);
+      } else {
+        channel.status = 'stopped';
+      }
+      
+      if (code !== 0 && code !== null && code !== 255) {
+        if (!wasReceiving && !wasWaiting) {
+          this.addLog('warning', `Channel ${channel.number} FFmpeg exited with code ${code}`);
+        }
+      }
+      
+      this.emit('channelUpdate', this.getChannels());
+    });
+
+    this.addLog('info', `Channel ${channel.number} "${channel.name}" listening on port ${channelPort} (Stream ID: ${channel.streamId})`);
+    this.emit('channelUpdate', this.getChannels());
+    return channel;
+  }
+
+  stopChannel(id) {
+    const channel = this.channels.get(id);
+    if (!channel) {
+      throw new Error('Channel not found');
+    }
+
+    const process = this.ffmpegProcesses.get(id);
+    if (process) {
+      process.kill('SIGTERM');
+      setTimeout(() => {
+        if (process.exitCode === null) {
+          process.kill('SIGKILL');
+        }
+      }, 2000);
+      this.ffmpegProcesses.delete(id);
+    }
+
+    if (channel.isRecording) {
       this.stopRecording(id);
     }
+
+    channel.status = 'stopped';
+    channel.connectedClients = 0;
+    channel.bytesReceived = 0;
+    channel.bytesSent = 0;
+    channel.bitrate = 0;
+    channel.encoderIp = null;
+    channel.startedAt = null;
+    channel.uptime = 0;
+
+    this.emit('channelUpdate', this.getChannels());
+    return channel;
+  }
+
+  startAllChannels() {
+    const channels = this.getChannels();
+    channels.forEach(channel => {
+      try {
+        this.startChannel(channel.id);
+      } catch (e) {
+        this.addLog('error', `Failed to start channel ${channel.number}: ${e.message}`);
+      }
+    });
+    this.addLog('success', `Started all ${this.numChannels} channels on SRT port ${this.serverConfig.srtPort}`);
+  }
+
+  stopAllChannels() {
+    const channels = this.getChannels();
+    channels.forEach(channel => {
+      try {
+        this.stopChannel(channel.id);
+      } catch (e) {
+      }
+    });
+    this.addLog('info', 'Stopped all channels');
+  }
+
+  parseFFmpegOutput(id, output) {
+    const channel = this.channels.get(id);
+    if (!channel) return;
+
+    if (output.includes('Opening') && output.includes('srt://')) {
+      channel.status = 'receiving';
+      channel.startedAt = Date.now();
+      channel.connectedClients = 1;
+      
+      const ipMatch = output.match(/(\d+\.\d+\.\d+\.\d+)/);
+      if (ipMatch) {
+        channel.encoderIp = ipMatch[1];
+      }
+      
+      this.addLog('success', `Channel ${channel.number} "${channel.name}" connected`);
+      this.emit('channelUpdate', this.getChannels());
+    }
+
+    if (output.includes('Connection reset') || output.includes('Connection timed out') || output.includes('Connection refused')) {
+      channel.status = 'waiting';
+      channel.connectedClients = 0;
+      channel.encoderIp = null;
+      channel.startedAt = null;
+      this.addLog('info', `Channel ${channel.number} "${channel.name}" disconnected`);
+      this.emit('channelUpdate', this.getChannels());
+    }
+
+    const sizeMatch = output.match(/size=\s*(\d+)(\w+)/);
+    if (sizeMatch) {
+      const size = parseInt(sizeMatch[1]);
+      const unit = sizeMatch[2].toLowerCase();
+      let bytes = size;
+      if (unit === 'kb' || unit === 'kib') bytes = size * 1024;
+      else if (unit === 'mb' || unit === 'mib') bytes = size * 1024 * 1024;
+      channel.bytesReceived = bytes;
+      channel.bytesSent = bytes;
+    }
+
+    const bitrateMatch = output.match(/bitrate=\s*([\d.]+)(\w+)/);
+    if (bitrateMatch) {
+      let bitrate = parseFloat(bitrateMatch[1]);
+      const unit = bitrateMatch[2].toLowerCase();
+      if (unit === 'mbits/s' || unit === 'mbit/s') bitrate *= 1000;
+      channel.bitrate = Math.round(bitrate);
+    }
+
+    const fpsMatch = output.match(/fps=\s*([\d.]+)/);
+    if (fpsMatch) {
+      channel.fps = parseFloat(fpsMatch[1]);
+    }
+
+    const dropMatch = output.match(/drop=\s*(\d+)/);
+    if (dropMatch) {
+      channel.packetsDropped = parseInt(dropMatch[1]);
+    }
+
+    const dupMatch = output.match(/dup=\s*(\d+)/);
+    if (dupMatch) {
+      channel.packetsLost = parseInt(dupMatch[1]);
+    }
+  }
+
+  disconnectChannel(id) {
+    const channel = this.channels.get(id);
+    if (!channel) {
+      throw new Error('Channel not found');
+    }
+
+    if (channel.status !== 'receiving') {
+      throw new Error('Channel is not receiving');
+    }
+
+    this.stopChannel(id);
     
-    this.stopStream(id);
+    setTimeout(() => {
+      this.startChannel(id);
+    }, 500);
     
-    stream.bytesReceived = 0;
-    stream.bytesSent = 0;
-    stream.packetsLost = 0;
-    stream.packetsDropped = 0;
-    
-    this.addLog('info', `Stream "${stream.name}" disconnected by user`);
-    return stream;
+    this.addLog('info', `Channel ${channel.number} "${channel.name}" disconnected by user`);
+    return channel;
   }
 
   resetBuffer(id) {
-    const stream = this.streams.get(id);
-    if (!stream) {
-      throw new Error('Stream not found');
+    const channel = this.channels.get(id);
+    if (!channel) {
+      throw new Error('Channel not found');
     }
 
-    if (stream.status !== 'running') {
-      throw new Error('Stream is not running');
+    if (channel.status !== 'receiving') {
+      throw new Error('Channel is not receiving');
     }
 
-    const wasRecording = stream.isRecording;
-    const recordingFormat = stream.recordingFormat;
+    const wasRecording = channel.isRecording;
+    const recordingFormat = channel.recordingFormat;
     
-    if (stream.isRecording) {
-      this.stopRecording(id);
-    }
-    
-    this.stopStream(id);
-    
-    stream.bytesReceived = 0;
-    stream.bytesSent = 0;
+    this.stopChannel(id);
     
     setTimeout(() => {
-      try {
-        this.startStream(id);
-        this.addLog('info', `Buffer reset completed for stream "${stream.name}"`);
-        if (wasRecording) {
-          setTimeout(() => {
-            try {
-              this.startRecording(id, recordingFormat);
-            } catch (e) {
-              this.addLog('warning', `Could not resume recording: ${e.message}`);
-            }
-          }, 2000);
-        }
-      } catch (e) {
-        this.addLog('error', `Failed to restart stream after buffer reset: ${e.message}`);
+      this.startChannel(id);
+      this.addLog('info', `Buffer reset for channel ${channel.number}`);
+      
+      if (wasRecording) {
+        setTimeout(() => {
+          try {
+            this.startRecording(id, recordingFormat);
+          } catch (e) {
+          }
+        }, 2000);
       }
     }, 500);
     
-    this.addLog('info', `Resetting buffer for stream "${stream.name}"...`);
-    return stream;
+    return channel;
   }
 
   startRecording(id, format = 'ts') {
-    const stream = this.streams.get(id);
-    if (!stream) {
-      throw new Error('Stream not found');
+    const channel = this.channels.get(id);
+    if (!channel) {
+      throw new Error('Channel not found');
     }
 
-    if (stream.isRecording) {
+    if (channel.isRecording) {
       throw new Error('Already recording');
     }
 
-    if (stream.status !== 'running') {
-      throw new Error('Stream must be running to record');
-    }
-
-    if (!stream.multicastAddress) {
-      this.addLog('warning', `Recording requires multicast output to be configured`);
-      throw new Error('Recording requires multicast output');
+    if (channel.status !== 'receiving') {
+      throw new Error('Channel must be receiving to record');
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const safeName = stream.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
+    const safeName = channel.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
     const filename = `${safeName}_${timestamp}.${format}`;
     const filepath = join(this.recordingsDir, filename);
 
@@ -463,7 +448,7 @@ export class SRTManager extends EventEmitter {
     const ffmpegArgs = [
       '-hide_banner',
       '-loglevel', 'warning',
-      '-i', `udp://${stream.multicastAddress}:${stream.multicastPort}`,
+      '-i', `udp://${channel.multicastAddress}:${channel.multicastPort}`,
       ...formatArgs
     ];
 
@@ -472,9 +457,9 @@ export class SRTManager extends EventEmitter {
     });
 
     this.recordingProcesses.set(id, recProcess);
-    stream.isRecording = true;
-    stream.recordingFile = filepath;
-    stream.recordingFormat = format;
+    channel.isRecording = true;
+    channel.recordingFile = filepath;
+    channel.recordingFormat = format;
 
     recProcess.stderr.on('data', (data) => {
       const output = data.toString();
@@ -484,41 +469,84 @@ export class SRTManager extends EventEmitter {
     });
 
     recProcess.on('close', (code) => {
-      stream.isRecording = false;
+      channel.isRecording = false;
       this.recordingProcesses.delete(id);
       if (code === 0 || code === 255) {
         this.addLog('success', `Recording saved: ${filename}`);
       } else if (code !== null) {
         this.addLog('warning', `Recording ended with code ${code}`);
       }
-      this.emit('streamUpdate', this.getStreams());
+      this.emit('channelUpdate', this.getChannels());
     });
 
-    this.addLog('info', `Started recording stream "${stream.name}" to ${filename}`);
-    this.emit('streamUpdate', this.getStreams());
+    this.addLog('info', `Started recording channel ${channel.number} to ${filename}`);
+    this.emit('channelUpdate', this.getChannels());
     return { filepath, filename };
   }
 
   stopRecording(id) {
-    const stream = this.streams.get(id);
-    if (!stream) {
-      throw new Error('Stream not found');
+    const channel = this.channels.get(id);
+    if (!channel) {
+      throw new Error('Channel not found');
     }
 
     const recProcess = this.recordingProcesses.get(id);
     if (recProcess) {
-      recProcess.kill('SIGTERM');
+      recProcess.kill('SIGINT');
       setTimeout(() => {
-        if (this.recordingProcesses.has(id)) {
+        if (recProcess.exitCode === null) {
           recProcess.kill('SIGKILL');
         }
       }, 3000);
     }
 
-    stream.isRecording = false;
-    this.addLog('info', `Stopped recording stream "${stream.name}"`);
-    this.emit('streamUpdate', this.getStreams());
-    return stream;
+    channel.isRecording = false;
+    this.recordingProcesses.delete(id);
+    this.addLog('info', `Stopped recording channel ${channel.number}`);
+    this.emit('channelUpdate', this.getChannels());
+    return channel;
+  }
+
+  addLog(level, message) {
+    const log = {
+      id: uuidv4(),
+      level,
+      message,
+      timestamp: Date.now()
+    };
+    
+    this.logs.unshift(log);
+    if (this.logs.length > this.maxLogs) {
+      this.logs = this.logs.slice(0, this.maxLogs);
+    }
+    
+    this.emit('log', log);
+  }
+
+  getLogs() {
+    return this.logs;
+  }
+
+  clearLogs() {
+    this.logs = [];
+    this.emit('logsCleared');
+  }
+
+  getStats() {
+    const channels = this.getChannels();
+    const receiving = channels.filter(c => c.status === 'receiving');
+    const waiting = channels.filter(c => c.status === 'waiting');
+    
+    return {
+      totalChannels: channels.length,
+      receivingChannels: receiving.length,
+      waitingChannels: waiting.length,
+      connectedClients: receiving.length,
+      totalBytesReceived: channels.reduce((acc, c) => acc + c.bytesReceived, 0),
+      totalBytesSent: channels.reduce((acc, c) => acc + c.bytesSent, 0),
+      totalBitrate: channels.reduce((acc, c) => acc + c.bitrate, 0),
+      srtPort: this.serverConfig.srtPort
+    };
   }
 
   sanitizeFilename(filename) {
@@ -531,19 +559,21 @@ export class SRTManager extends EventEmitter {
 
   saveConfig(filename = 'srt-config.json') {
     const safeFilename = this.sanitizeFilename(filename);
-    const streams = this.getStreams();
+    const channels = this.getChannels();
     const config = {
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
-      streams: streams.map(s => ({
-        name: s.name,
-        srtPort: s.srtPort,
-        streamId: s.streamId,
-        multicastAddress: s.multicastAddress,
-        multicastPort: s.multicastPort,
-        latency: s.latency,
-        passthrough: s.passthrough,
-        recordingFormat: s.recordingFormat
+      serverConfig: this.serverConfig,
+      channels: channels.map(c => ({
+        number: c.number,
+        name: c.name,
+        streamId: c.streamId,
+        multicastAddress: c.multicastAddress,
+        multicastPort: c.multicastPort,
+        bufferStart: c.bufferStart,
+        bufferMax: c.bufferMax,
+        inputFps: c.inputFps,
+        timecodeSource: c.timecodeSource
       }))
     };
 
@@ -573,29 +603,35 @@ export class SRTManager extends EventEmitter {
       throw new Error('Invalid configuration file format');
     }
 
-    if (!config.streams || !Array.isArray(config.streams)) {
-      throw new Error('Invalid configuration: missing streams array');
+    if (!config.channels || !Array.isArray(config.channels)) {
+      throw new Error('Invalid configuration: missing channels array');
     }
 
-    this.getStreams().forEach(s => {
-      if (s.status === 'running' || s.status === 'waiting') {
-        this.stopStream(s.id);
+    this.stopAllChannels();
+    
+    if (config.serverConfig) {
+      this.serverConfig = { ...this.serverConfig, ...config.serverConfig };
+    }
+
+    config.channels.forEach(channelConfig => {
+      const channel = this.getChannelByNumber(channelConfig.number);
+      if (channel) {
+        Object.assign(channel, {
+          name: channelConfig.name || channel.name,
+          streamId: channelConfig.streamId || channel.streamId,
+          multicastAddress: channelConfig.multicastAddress || channel.multicastAddress,
+          multicastPort: channelConfig.multicastPort || channel.multicastPort,
+          bufferStart: channelConfig.bufferStart ?? channel.bufferStart,
+          bufferMax: channelConfig.bufferMax ?? channel.bufferMax,
+          inputFps: channelConfig.inputFps || channel.inputFps,
+          timecodeSource: channelConfig.timecodeSource || channel.timecodeSource
+        });
       }
     });
-    
-    setTimeout(() => {
-      this.streams.clear();
-      
-      config.streams.forEach(streamConfig => {
-        if (streamConfig.name && streamConfig.srtPort) {
-          this.createStream(streamConfig);
-        }
-      });
-      
-      this.emit('streamUpdate', this.getStreams());
-    }, 500);
 
-    this.addLog('success', `Loading ${config.streams.length} streams from ${safeFilename}`);
+    this.emit('channelUpdate', this.getChannels());
+    this.emit('configUpdate', this.getServerConfig());
+    this.addLog('success', `Loaded configuration from ${safeFilename}`);
     return config;
   }
 
@@ -605,46 +641,23 @@ export class SRTManager extends EventEmitter {
       return [];
     }
     
-    const files = [];
-    try {
-      const { readdirSync, statSync } = require('fs');
-      readdirSync(configDir).forEach(file => {
-        if (file.endsWith('.json')) {
-          const stat = statSync(join(configDir, file));
-          files.push({
-            filename: file,
-            size: stat.size,
-            modified: stat.mtime.toISOString()
-          });
-        }
-      });
-    } catch (e) {
-      return [];
-    }
-    return files;
+    return readdirSync(configDir)
+      .filter(f => f.endsWith('.json'))
+      .map(f => f.replace('.json', ''));
   }
 
-  getRecordingsList() {
-    if (!existsSync(this.recordingsDir)) {
-      return [];
+  shutdown() {
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
     }
     
-    const files = [];
-    try {
-      const { readdirSync, statSync } = require('fs');
-      readdirSync(this.recordingsDir).forEach(file => {
-        if (file.endsWith('.ts') || file.endsWith('.mp4') || file.endsWith('.mov')) {
-          const stat = statSync(join(this.recordingsDir, file));
-          files.push({
-            filename: file,
-            size: stat.size,
-            created: stat.birthtime.toISOString()
-          });
-        }
-      });
-    } catch (e) {
-      return [];
-    }
-    return files;
+    this.stopAllChannels();
+    
+    this.recordingProcesses.forEach((process) => {
+      process.kill('SIGINT');
+    });
+    this.recordingProcesses.clear();
   }
 }
+
+export default SRTManager;
