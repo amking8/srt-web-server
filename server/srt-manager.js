@@ -690,13 +690,17 @@ export class SRTManager extends EventEmitter {
     const channel = this.channels.get(id);
     if (!channel) return;
 
-    if (output.includes('Opening') && output.includes('srt://')) {
+    const connectionMatch = /Connection (from|accepted)/i.test(output);
+    const inputMatch = output.includes('Input #0') && output.includes('srt://');
+    const frameMatch = channel.status === 'waiting' && /frame=\s*\d+/.test(output);
+    
+    if ((connectionMatch || inputMatch || frameMatch) && channel.status !== 'receiving') {
       channel.status = 'receiving';
       channel.startedAt = Date.now();
       channel.connectedClients = 1;
       
       const ipMatch = output.match(/(\d+\.\d+\.\d+\.\d+)/);
-      if (ipMatch) {
+      if (ipMatch && ipMatch[1] !== '0.0.0.0') {
         channel.encoderIp = ipMatch[1];
       }
       
