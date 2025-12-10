@@ -79,7 +79,8 @@ class MultiviewerService extends EventEmitter {
 
     const hlsDir = this.getChannelHlsDir(channelId);
     const outputPath = path.join(hlsDir, 'stream.m3u8');
-    const udpInput = `udp://${channel.multicastAddress}:${channel.multicastPort}?fifo_size=1000000&overrun_nonfatal=1`;
+    // Use localhost UDP instead of multicast (multicast doesn't work on cloud/AWS)
+    const udpInput = `udp://127.0.0.1:${channel.multicastPort}?fifo_size=1000000&overrun_nonfatal=1`;
 
     const ffmpegArgs = [
       '-hide_banner',
@@ -170,7 +171,8 @@ class MultiviewerService extends EventEmitter {
     const channel = this.srtManager.getChannel(channelId);
     if (!channel || this.audioProcesses.has(channelId)) return;
 
-    const udpInput = `udp://${channel.multicastAddress}:${channel.multicastPort}?fifo_size=500000&overrun_nonfatal=1`;
+    // Use localhost UDP instead of multicast (multicast doesn't work on cloud/AWS)
+    const udpInput = `udp://127.0.0.1:${channel.multicastPort}?fifo_size=500000&overrun_nonfatal=1`;
 
     const ffmpegArgs = [
       '-hide_banner',

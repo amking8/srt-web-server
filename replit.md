@@ -90,7 +90,12 @@ npm run dev
 - Node.js 20
 - Express, WebSocket, React, Vite
 
+## Deployment Notes
+- **AWS/Cloud Compatibility**: UDP multicast (239.255.x.x) doesn't work on AWS/cloud platforms. The code uses localhost UDP (127.0.0.1) for internal routing between FFmpeg processes.
+- **EC2 Instance**: Running at 100.28.227.224, managed by PM2
+
 ## Recent Changes
+- December 2024: Fixed multicast to localhost for AWS EC2 compatibility
 - December 2024: Initial project creation
 - Implemented FFmpeg-based SRT handling for real SRT protocol support
 - Added UDP multicast passthrough functionality
