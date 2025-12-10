@@ -5,7 +5,9 @@ import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import os from 'os';
+import fs from 'fs';
 import { SRTManager } from './srt-manager.js';
+import MultiviewerService from './multiviewer-service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,6 +22,7 @@ app.use(express.json());
 app.use(express.static(join(__dirname, '../dist')));
 
 const srtManager = new SRTManager();
+const multiviewerService = new MultiviewerService(srtManager);
 
 const wsClients = new Set();
 
@@ -68,6 +71,18 @@ srtManager.on('configUpdate', (config) => {
 
 srtManager.on('timecodeUpdate', (channels) => {
   broadcast({ type: 'timecode', data: channels });
+});
+
+multiviewerService.on('audioLevels', (data) => {
+  broadcast({ type: 'audioLevels', data });
+});
+
+multiviewerService.on('started', () => {
+  broadcast({ type: 'multiviewerStatus', data: { isRunning: true } });
+});
+
+multiviewerService.on('stopped', () => {
+  broadcast({ type: 'multiviewerStatus', data: { isRunning: false } });
 });
 
 app.get('/api/channels', (req, res) => {
@@ -226,6 +241,60 @@ app.post('/api/config/load', (req, res) => {
 
 app.get('/api/config/list', (req, res) => {
   res.json(srtManager.getConfigList());
+});
+
+app.post('/api/multiviewer/start', (req, res) => {
+  try {
+    multiviewerService.start();
+    res.json({ success: true, status: multiviewerService.getStatus() });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.post('/api/multiviewer/stop', (req, res) => {
+  try {
+    multiviewerService.stop();
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/multiviewer/status', (req, res) => {
+  res.json(multiviewerService.getStatus());
+});
+
+app.get('/api/multiviewer/audio-levels', (req, res) => {
+  res.json(multiviewerService.getAudioLevels());
+});
+
+app.get('/hls/:channelId/stream.m3u8', (req, res) => {
+  const { channelId } = req.params;
+  const hlsPath = join('/tmp/hls', `channel-${channelId}`, 'stream.m3u8');
+  
+  if (fs.existsSync(hlsPath)) {
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.sendFile(hlsPath);
+  } else {
+    res.status(404).json({ error: 'Stream not available' });
+  }
+});
+
+app.get('/hls/:channelId/:segment', (req, res) => {
+  const { channelId, segment } = req.params;
+  const segmentPath = join('/tmp/hls', `channel-${channelId}`, segment);
+  
+  if (fs.existsSync(segmentPath)) {
+    res.setHeader('Content-Type', 'video/mp2t');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.sendFile(segmentPath);
+  } else {
+    res.status(404).json({ error: 'Segment not found' });
+  }
 });
 
 app.get('/api/logs', (req, res) => {
