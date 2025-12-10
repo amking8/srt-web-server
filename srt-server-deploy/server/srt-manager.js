@@ -114,7 +114,8 @@ export class SRTManager extends EventEmitter {
       return;
     }
 
-    const udpInput = `udp://${channel.multicastAddress}:${channel.multicastPort}?fifo_size=1000000&overrun_nonfatal=1`;
+    // Use localhost UDP instead of multicast (multicast doesn't work on cloud/AWS)
+    const udpInput = `udp://127.0.0.1:${channel.multicastPort}?fifo_size=1000000&overrun_nonfatal=1`;
     
     const ffmpegArgs = [
       '-hide_banner',
@@ -560,6 +561,9 @@ export class SRTManager extends EventEmitter {
 
     channel.srtPort = channelPort;
 
+    // Use localhost UDP instead of multicast (multicast doesn't work on cloud/AWS)
+    const udpOutput = `udp://127.0.0.1:${channel.multicastPort}?pkt_size=1316`;
+    
     const ffmpegArgs = [
       '-hide_banner',
       '-loglevel', 'info',
@@ -568,7 +572,7 @@ export class SRTManager extends EventEmitter {
       '-i', srtInput,
       '-c', 'copy',
       '-f', 'mpegts',
-      `udp://${channel.multicastAddress}:${channel.multicastPort}?pkt_size=1316`
+      udpOutput
     ];
 
     const ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
@@ -843,10 +847,11 @@ export class SRTManager extends EventEmitter {
       ? ['-c', 'copy', '-movflags', '+faststart', '-f', 'mp4', filepath]
       : ['-c', 'copy', '-f', 'mpegts', filepath];
 
+    // Use localhost UDP instead of multicast (multicast doesn't work on cloud/AWS)
     const ffmpegArgs = [
       '-hide_banner',
       '-loglevel', 'warning',
-      '-i', `udp://${channel.multicastAddress}:${channel.multicastPort}`,
+      '-i', `udp://127.0.0.1:${channel.multicastPort}`,
       ...formatArgs
     ];
 
