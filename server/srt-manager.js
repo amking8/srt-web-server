@@ -20,7 +20,11 @@ export class SRTManager extends EventEmitter {
       srtPort: 9000,
       latency: 200,
       encryption: 'none',
-      passphrase: ''
+      passphrase: '',
+      connectionMode: 'local',
+      localIp: '',
+      publicIp: '',
+      publicPort: 9000
     };
     
     if (!existsSync(this.recordingsDir)) {
@@ -113,7 +117,11 @@ export class SRTManager extends EventEmitter {
       srtPort: config.srtPort ?? this.serverConfig.srtPort,
       latency: config.latency ?? this.serverConfig.latency,
       encryption: config.encryption ?? this.serverConfig.encryption,
-      passphrase: config.passphrase ?? this.serverConfig.passphrase
+      passphrase: config.passphrase ?? this.serverConfig.passphrase,
+      connectionMode: config.connectionMode ?? this.serverConfig.connectionMode,
+      localIp: config.localIp ?? this.serverConfig.localIp,
+      publicIp: config.publicIp ?? this.serverConfig.publicIp,
+      publicPort: config.publicPort ?? this.serverConfig.publicPort
     };
     
     this.addLog('info', `Server config updated: SRT port ${this.serverConfig.srtPort}`);

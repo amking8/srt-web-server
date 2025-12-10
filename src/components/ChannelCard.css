@@ -217,6 +217,51 @@
   font-size: 0.85rem;
 }
 
+.connection-string {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px 8px;
+  border-radius: 4px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.srt-url {
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.srt-url.dim {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.copy-btn:hover {
+  color: var(--accent);
+  background: rgba(59, 130, 246, 0.1);
+}
+
 .srt-port {
   color: #9ca3af;
   font-size: 0.75rem;
