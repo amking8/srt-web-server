@@ -34,24 +34,20 @@ function ChannelCard({ channel, serverConfig, onEdit, onDisconnect, onResetBuffe
 
   const getSyncStatusClass = () => {
     switch (channel.syncStatus) {
-      case 'reference': return 'sync-reference';
       case 'synced': return 'sync-ok';
       case 'warning': return 'sync-warning';
       case 'out_of_sync': return 'sync-error';
-      case 'waiting_ref': return 'sync-waiting';
-      case 'disabled': return 'sync-disabled';
+      case 'no_tc': return 'sync-no-tc';
       default: return 'sync-unknown';
     }
   };
 
   const getSyncStatusText = () => {
     switch (channel.syncStatus) {
-      case 'reference': return 'REF';
       case 'synced': return 'SYNC';
       case 'warning': return 'DRIFT';
       case 'out_of_sync': return 'OUT';
-      case 'waiting_ref': return 'WAIT';
-      case 'disabled': return 'OFF';
+      case 'no_tc': return 'NO TC';
       default: return '---';
     }
   };

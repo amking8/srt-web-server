@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './Header.css';
 
-function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUpdateConfig, onSaveConfig, onLoadConfig }) {
+function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUpdateConfig, onSaveConfig, onLoadConfig, timecodeConfig, onToggleTimecodeSync, onUpdateTimecodeConfig }) {
   const [showSettings, setShowSettings] = useState(false);
   const [portValue, setPortValue] = useState(serverConfig?.srtPort || 9000);
   const [latencyValue, setLatencyValue] = useState(serverConfig?.latency || 200);
@@ -10,6 +10,7 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
   const [publicIp, setPublicIp] = useState(serverConfig?.publicIp || '');
   const [publicPort, setPublicPort] = useState(serverConfig?.publicPort || 9000);
   const [channelCount, setChannelCount] = useState(serverConfig?.channelCount || 16);
+  const [syncShiftMs, setSyncShiftMs] = useState(timecodeConfig?.syncShiftMs || 0);
   const [networkInterfaces, setNetworkInterfaces] = useState([]);
   const [loadingPublicIp, setLoadingPublicIp] = useState(false);
 
@@ -24,6 +25,12 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
       setChannelCount(serverConfig.channelCount || 16);
     }
   }, [serverConfig]);
+
+  useEffect(() => {
+    if (timecodeConfig) {
+      setSyncShiftMs(timecodeConfig.syncShiftMs || 0);
+    }
+  }, [timecodeConfig]);
 
   useEffect(() => {
     if (showSettings) {
@@ -63,6 +70,9 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
       publicIp,
       publicPort: parseInt(publicPort, 10),
       channelCount: parseInt(channelCount, 10)
+    });
+    onUpdateTimecodeConfig({
+      syncShiftMs: parseInt(syncShiftMs, 10)
     });
     setShowSettings(false);
   };
@@ -186,6 +196,17 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
         </div>
         
         <div className="header-actions">
+          <button 
+            className={`btn-timecode-sync ${timecodeConfig?.syncEnabled ? 'active' : ''}`}
+            onClick={() => onToggleTimecodeSync(!timecodeConfig?.syncEnabled)}
+            title="Toggle TimeCode Sync"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12,6 12,12 16,14"/>
+            </svg>
+            TC Sync
+          </button>
           <button className="btn-secondary" onClick={onLoadConfig} title="Load Configuration">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M2 12V14H14V12M8 2V10M8 10L4 6M8 10L12 6"/>
@@ -264,6 +285,33 @@ function Header({ serverConfig, serverRunning, onStartServer, onStopServer, onUp
                     ))}
                   </select>
                   <span className="help-text">IP address for local network connections</span>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <h4>TimeCode Sync Settings</h4>
+                <div className="setting-group">
+                  <label>Sync Shift (ms)</label>
+                  <input 
+                    type="number" 
+                    value={syncShiftMs}
+                    onChange={e => setSyncShiftMs(e.target.value)}
+                    min="-60000"
+                    max="60000"
+                  />
+                  <span className="help-text">SyncTime = RealTime - SyncShift (offset from UTC)</span>
+                </div>
+                <div className="setting-group">
+                  <label>Timecode Source</label>
+                  <select 
+                    value={timecodeConfig?.defaultTimecodeSource || 'sei'}
+                    onChange={e => onUpdateTimecodeConfig({ defaultTimecodeSource: e.target.value })}
+                  >
+                    <option value="sei">SEI (H.264 metadata)</option>
+                    <option value="ltc">LTC (Audio channel)</option>
+                    <option value="vitc">VITC (Video pixels)</option>
+                  </select>
+                  <span className="help-text">Method to read embedded timecode</span>
                 </div>
               </div>
 

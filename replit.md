@@ -116,13 +116,14 @@ npm run dev
   - Added configurable channel count (4, 8, 12, or 16 channels)
 - December 2024 (TimeCode Synchronization): Critical feature for live sports production
   - SMPTE timecode display (HH:MM:SS:FF) on each receiving channel
-  - Timecode sources: uptime (elapsed time), stream (embedded SEI/LTC), or none
+  - Global TC Sync toggle button in header (like SRT Mini Server)
+  - Per-channel timecode source selection: SEI (H.264 metadata), LTC (audio), VITC (video), or none
+  - NTP-based SyncTime calculation: `SyncTime = RealTime - SyncShift`
+  - Sync offset shows frames difference between embedded timecode and SyncTime
+  - Sync status indicators: synced (green), warning (yellow), out_of_sync (red), no_tc (gray)
+  - TimecodeWorker: FFmpeg-based extraction spawns when TC Sync enabled
+  - Parses SEI timecode from FFmpeg showinfo filter output
+  - Configurable Sync Shift in milliseconds for timezone/offset adjustment
   - Channels receive video regardless of timecode sync status
-  - Reference channel system for multi-camera sync offset calculation
-  - Sync status indicators: REF, SYNC, DRIFT, OUT, WAIT, OFF (disabled)
-  - Frame-accurate offset display showing +/-Nf relative to reference
-  - Set any receiving channel as reference via channel menu
-  - Sync can be disabled per-channel (syncEnabled flag)
   - Thresholds: 2 frames = synced, 5 frames = warning, >5 frames = out of sync
-  - Reference channel persists when offline; other channels show WAIT status
-  - Matches SRT Mini Server timecode workflow (SEI/LTC/VITC methods)
+  - API endpoints: GET/PUT /api/timecode/config, POST /api/timecode/toggle

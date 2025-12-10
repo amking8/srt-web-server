@@ -31,6 +31,12 @@ export class SRTManager extends EventEmitter {
       channelCount: 16
     };
     
+    this.timecodeConfig = {
+      syncEnabled: false,
+      syncShiftMs: 0,
+      defaultTimecodeSource: 'sei'
+    };
+    
     if (!existsSync(this.recordingsDir)) {
       mkdirSync(this.recordingsDir, { recursive: true });
     }
@@ -68,13 +74,12 @@ export class SRTManager extends EventEmitter {
         bufferStart: 100,
         bufferMax: 400,
         inputFps: 'auto',
-        timecodeSource: 'uptime',
+        timecodeSource: 'sei',
         timecode: '00:00:00:00',
         timecodeFrames: 0,
-        hasEmbeddedTimecode: false,
+        embeddedTimecode: null,
         syncOffset: 0,
         syncStatus: 'unknown',
-        syncEnabled: true,
         isReference: false
       };
       this.channels.set(id, channel);
@@ -91,47 +96,185 @@ export class SRTManager extends EventEmitter {
         } else {
           channel.timecode = '00:00:00:00';
           channel.timecodeFrames = 0;
+          channel.embeddedTimecode = null;
         }
       });
-      this.calculateSyncOffsets();
+      
+      if (this.timecodeConfig.syncEnabled) {
+        this.calculateSyncOffsets();
+      }
     }, 33);
   }
 
-  updateChannelTimecode(channel) {
-    if (channel.timecodeSource === 'uptime') {
-      this.updateTimecodeFromUptime(channel);
-    } else if (channel.timecodeSource === 'stream') {
-      if (!channel.hasEmbeddedTimecode) {
-        this.updateTimecodeFromUptime(channel);
-      }
-    } else if (channel.timecodeSource === 'none') {
-      channel.timecode = '00:00:00:00';
-      channel.timecodeFrames = 0;
-    }
-  }
+  startTimecodeWorker(channelId) {
+    const channel = this.channels.get(channelId);
+    if (!channel || this.timecodeProcesses.has(channelId)) return;
 
-  updateTimecodeFromUptime(channel) {
-    if (!channel.startedAt) {
-      channel.timecode = '00:00:00:00';
-      channel.timecodeFrames = 0;
+    if (channel.timecodeSource === 'none' || !this.timecodeConfig.syncEnabled) {
       return;
     }
+
+    const udpInput = `udp://${channel.multicastAddress}:${channel.multicastPort}?fifo_size=1000000&overrun_nonfatal=1`;
     
-    const fps = channel.fps > 0 ? channel.fps : 30;
-    const elapsedMs = Date.now() - channel.startedAt;
-    const totalFrames = Math.floor((elapsedMs / 1000) * fps);
+    const ffmpegArgs = [
+      '-hide_banner',
+      '-loglevel', 'info',
+      '-re',
+      '-i', udpInput,
+      '-vf', 'showinfo,fps=1',
+      '-an',
+      '-f', 'null',
+      '-'
+    ];
+
+    const process = spawn('ffmpeg', ffmpegArgs, {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    this.timecodeProcesses.set(channelId, process);
+
+    let buffer = '';
     
-    channel.timecode = this.framesToTimecode(totalFrames, fps);
-    channel.timecodeFrames = totalFrames;
+    process.stderr.on('data', (data) => {
+      const output = data.toString();
+      buffer += output;
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      
+      lines.forEach(line => {
+        const tcMatch = line.match(/timecode[:\s=]+(\d{2}:\d{2}:\d{2}[:;]\d{2})/i);
+        if (tcMatch) {
+          this.setEmbeddedTimecode(channelId, tcMatch[1]);
+          return;
+        }
+
+        const seiMatch = line.match(/SEI.*?(\d{2}:\d{2}:\d{2}[:;]\d{2})/i);
+        if (seiMatch) {
+          this.setEmbeddedTimecode(channelId, seiMatch[1]);
+          return;
+        }
+
+        const ptsMatch = line.match(/pts:\s*(\d+)\s/);
+        const ptsTimeMatch = line.match(/pts_time:([0-9.]+)/);
+        if (ptsTimeMatch) {
+          const pts = parseFloat(ptsTimeMatch[1]);
+          const fps = channel.fps > 0 ? channel.fps : 30;
+          const tc = this.ptsToTimecode(pts, fps);
+          this.setEmbeddedTimecode(channelId, tc);
+        }
+      });
+    });
+
+    process.on('close', (code) => {
+      this.timecodeProcesses.delete(channelId);
+      
+      if (channel.status === 'receiving' && this.timecodeConfig.syncEnabled && channel.timecodeSource !== 'none') {
+        setTimeout(() => {
+          if (channel.status === 'receiving' && this.timecodeConfig.syncEnabled) {
+            this.startTimecodeWorker(channelId);
+          }
+        }, 3000);
+      }
+    });
+
+    process.on('error', (err) => {
+      this.timecodeProcesses.delete(channelId);
+    });
   }
 
-  setEmbeddedTimecode(channelId, timecode, fps) {
+  startAllTimecodeWorkers() {
+    if (!this.timecodeConfig.syncEnabled) return;
+    
+    this.channels.forEach(channel => {
+      if (channel.status === 'receiving' && channel.timecodeSource !== 'none') {
+        this.startTimecodeWorker(channel.id);
+      }
+    });
+  }
+
+  stopAllTimecodeWorkers() {
+    this.timecodeProcesses.forEach((process, id) => {
+      try {
+        process.kill('SIGTERM');
+      } catch (e) {}
+    });
+    this.timecodeProcesses.clear();
+  }
+
+  stopTimecodeWorker(channelId) {
+    const process = this.timecodeProcesses.get(channelId);
+    if (process) {
+      try {
+        process.kill('SIGTERM');
+      } catch (e) {}
+      this.timecodeProcesses.delete(channelId);
+    }
+  }
+
+  updateChannelTimecode(channel) {
+    if (channel.embeddedTimecode) {
+      channel.timecode = channel.embeddedTimecode;
+      const fps = channel.fps > 0 ? channel.fps : 30;
+      channel.timecodeFrames = this.timecodeToFrames(channel.embeddedTimecode, fps);
+    } else {
+      channel.timecode = '00:00:00:00';
+      channel.timecodeFrames = 0;
+    }
+  }
+
+  setEmbeddedTimecode(channelId, timecode) {
     const channel = this.channels.get(channelId);
     if (!channel) return;
     
-    channel.hasEmbeddedTimecode = true;
+    channel.embeddedTimecode = timecode;
     channel.timecode = timecode;
-    channel.timecodeFrames = this.timecodeToFrames(timecode, fps || channel.fps || 30);
+    const fps = channel.fps > 0 ? channel.fps : 30;
+    channel.timecodeFrames = this.timecodeToFrames(timecode, fps);
+  }
+
+  getCurrentSyncTime() {
+    const now = new Date();
+    const utcMs = now.getTime() - this.timecodeConfig.syncShiftMs;
+    const syncDate = new Date(utcMs);
+    
+    const hours = syncDate.getUTCHours();
+    const minutes = syncDate.getUTCMinutes();
+    const seconds = syncDate.getUTCSeconds();
+    const ms = syncDate.getUTCMilliseconds();
+    const fps = 30;
+    const frames = Math.floor((ms / 1000) * fps);
+    
+    return {
+      timecode: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}:${String(frames).padStart(2, '0')}`,
+      totalFrames: (hours * 3600 + minutes * 60 + seconds) * fps + frames
+    };
+  }
+
+  setTimecodeConfig(config) {
+    this.timecodeConfig = { ...this.timecodeConfig, ...config };
+    this.addLog('info', `TimeCode config updated: sync=${this.timecodeConfig.syncEnabled}, shift=${this.timecodeConfig.syncShiftMs}ms`);
+    this.emit('timecodeConfigUpdate', this.timecodeConfig);
+  }
+
+  getTimecodeConfig() {
+    return this.timecodeConfig;
+  }
+
+  toggleTimecodeSync(enabled) {
+    this.timecodeConfig.syncEnabled = enabled;
+    if (enabled) {
+      this.startAllTimecodeWorkers();
+    } else {
+      this.stopAllTimecodeWorkers();
+      this.channels.forEach(ch => {
+        ch.syncStatus = 'unknown';
+        ch.syncOffset = 0;
+        ch.embeddedTimecode = null;
+      });
+    }
+    this.addLog('info', `TimeCode sync ${enabled ? 'enabled' : 'disabled'}`);
+    this.emit('timecodeConfigUpdate', this.timecodeConfig);
+    this.emit('channelUpdate', this.getChannels());
   }
 
   framesToTimecode(totalFrames, fps) {
@@ -171,63 +314,35 @@ export class SRTManager extends EventEmitter {
   }
 
   calculateSyncOffsets() {
-    const syncEnabledChannels = Array.from(this.channels.values())
-      .filter(c => c.status === 'receiving' && c.syncEnabled && c.timecodeFrames > 0);
+    const syncTime = this.getCurrentSyncTime();
+    const receivingChannels = Array.from(this.channels.values())
+      .filter(c => c.status === 'receiving');
     
     this.channels.forEach(ch => {
       if (ch.status !== 'receiving') {
         ch.syncStatus = 'unknown';
         ch.syncOffset = 0;
-      } else if (!ch.syncEnabled) {
-        ch.syncStatus = 'disabled';
-        ch.syncOffset = 0;
+        ch.isReference = false;
       }
     });
     
-    if (syncEnabledChannels.length === 0) {
+    if (receivingChannels.length === 0) {
       this.emit('timecodeUpdate', this.getChannels());
       return;
     }
 
-    let referenceChannel = null;
-    
-    if (this.referenceChannelId) {
-      const savedRef = this.channels.get(this.referenceChannelId);
-      if (savedRef && savedRef.status === 'receiving' && savedRef.syncEnabled && savedRef.timecodeFrames > 0) {
-        referenceChannel = savedRef;
-      }
-    }
-    
-    if (!this.referenceChannelId) {
-      referenceChannel = syncEnabledChannels[0];
-      this.referenceChannelId = referenceChannel.id;
-    }
-
-    this.channels.forEach(ch => {
-      ch.isReference = (ch.id === this.referenceChannelId);
-    });
-
-    if (!referenceChannel) {
-      syncEnabledChannels.forEach(channel => {
-        channel.syncStatus = 'waiting_ref';
-        channel.syncOffset = 0;
-      });
-      this.emit('timecodeUpdate', this.getChannels());
-      return;
-    }
-
-    const referenceFrames = referenceChannel.timecodeFrames;
     const frameThreshold = 2;
     const warningThreshold = 5;
 
-    syncEnabledChannels.forEach(channel => {
-      if (channel.id === referenceChannel.id) {
+    receivingChannels.forEach(channel => {
+      if (!channel.embeddedTimecode || channel.timecodeFrames === 0) {
+        channel.syncStatus = 'no_tc';
         channel.syncOffset = 0;
-        channel.syncStatus = 'reference';
+        channel.isReference = false;
         return;
       }
 
-      const offsetFrames = channel.timecodeFrames - referenceFrames;
+      const offsetFrames = channel.timecodeFrames - syncTime.totalFrames;
       channel.syncOffset = offsetFrames;
       
       const absOffset = Math.abs(offsetFrames);
@@ -529,6 +644,8 @@ export class SRTManager extends EventEmitter {
       this.ffmpegProcesses.delete(id);
     }
 
+    this.stopTimecodeWorker(id);
+
     if (channel.isRecording) {
       this.stopRecording(id);
     }
@@ -583,6 +700,10 @@ export class SRTManager extends EventEmitter {
         channel.encoderIp = ipMatch[1];
       }
       
+      if (this.timecodeConfig.syncEnabled && channel.timecodeSource !== 'none') {
+        setTimeout(() => this.startTimecodeWorker(id), 1000);
+      }
+      
       this.addLog('success', `Channel ${channel.number} "${channel.name}" connected`);
       this.emit('channelUpdate', this.getChannels());
     }
@@ -592,6 +713,8 @@ export class SRTManager extends EventEmitter {
       channel.connectedClients = 0;
       channel.encoderIp = null;
       channel.startedAt = null;
+      channel.embeddedTimecode = null;
+      this.stopTimecodeWorker(id);
       this.addLog('info', `Channel ${channel.number} "${channel.name}" disconnected`);
       this.emit('channelUpdate', this.getChannels());
     }
@@ -628,6 +751,16 @@ export class SRTManager extends EventEmitter {
     const dupMatch = output.match(/dup=\s*(\d+)/);
     if (dupMatch) {
       channel.packetsLost = parseInt(dupMatch[1]);
+    }
+
+    const timecodeMatch = output.match(/timecode\s*[:=]\s*(\d{2}:\d{2}:\d{2}[:;]\d{2})/i);
+    if (timecodeMatch) {
+      this.setEmbeddedTimecode(id, timecodeMatch[1]);
+    }
+
+    const smpteMatch = output.match(/(\d{2}:\d{2}:\d{2}[:;]\d{2})/);
+    if (smpteMatch && output.toLowerCase().includes('sei')) {
+      this.setEmbeddedTimecode(id, smpteMatch[1]);
     }
   }
 
